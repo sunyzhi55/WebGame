@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="WebGame">
+  <rect width="64" height="64" rx="12" fill="#111827"/>
+  <path d="M18 22h28v20H18z" fill="#7C3AED"/>
+  <path d="M22 26h6v6h-6zm14 0h6v6h-6zM22 36h6v6h-6zm14 0h6v6h-6z" fill="#FBBF24"/>
+</svg>

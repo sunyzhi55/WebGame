@@ -15,6 +15,7 @@ const games = [
 ];
 
 const base = import.meta.env.BASE_URL;
+const basePath = base.replace(/\/$/, '');
 ---
 
 <Layout title="Retro Arcade Hub">
@@ -28,7 +29,7 @@ const base = import.meta.env.BASE_URL;
 
 		<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
 			{games.map((game) => (
-				<a href={`${base}/games/${game.id}`} class="group relative block">
+				<a href={`${basePath}/games/${game.id}`} class="group relative block">
 					<div class={`absolute inset-0 ${game.color} rounded-lg transform translate-x-1 translate-y-1 transition-transform group-hover:translate-x-2 group-hover:translate-y-2`}></div>
 					<div class="relative bg-arcade-purple border-2 border-white/10 rounded-lg p-6 h-40 flex flex-col items-center justify-center hover:-translate-y-1 transition-transform duration-200">
 						<div class="text-4xl mb-3 group-hover:scale-110 transition-transform duration-200">{game.icon}</div>

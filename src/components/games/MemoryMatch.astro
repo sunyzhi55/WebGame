@@ -1,0 +1,175 @@
+<canvas id="memory-canvas" class="w-full h-full block cursor-pointer"></canvas>
+
+<script>
+    const canvas = document.getElementById('memory-canvas') as HTMLCanvasElement;
+    const ctx = canvas.getContext('2d')!;
+
+    // Config
+    const ROWS = 4;
+    const COLS = 4;
+    let CELL_SIZE = 80;
+    let offsetX = 0;
+    let offsetY = 0;
+    const GAP = 10;
+
+    // State
+    interface Card {
+        id: number;
+        emoji: string;
+        isFlipped: boolean;
+        isMatched: boolean;
+    }
+    let cards: Card[] = [];
+    let flippedCards: number[] = []; // Indices
+    let isProcessing = false;
+    let score = 0;
+    let matches = 0;
+
+    const EMOJIS = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼'];
+
+    function resize() {
+        const parent = canvas.parentElement;
+        if (parent) {
+            canvas.width = parent.clientWidth;
+            canvas.height = parent.clientHeight;
+            
+            const scaleX = canvas.width / COLS;
+            const scaleY = canvas.height / ROWS;
+            CELL_SIZE = Math.min(scaleX, scaleY) * 0.8;
+            
+            offsetX = (canvas.width - (CELL_SIZE * COLS + GAP * (COLS-1))) / 2;
+            offsetY = (canvas.height - (CELL_SIZE * ROWS + GAP * (ROWS-1))) / 2;
+            
+            draw();
+        }
+    }
+
+    function init() {
+        const pairs = [...EMOJIS, ...EMOJIS];
+        // Shuffle
+        for (let i = pairs.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pairs[i], pairs[j]] = [pairs[j], pairs[i]];
+        }
+
+        cards = pairs.map((emoji, i) => ({
+            id: i,
+            emoji,
+            isFlipped: false,
+            isMatched: false
+        }));
+
+        flippedCards = [];
+        isProcessing = false;
+        score = 0;
+        matches = 0;
+        window.updateScore(0);
+        draw();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        for(let i=0; i<cards.length; i++) {
+            const r = Math.floor(i / COLS);
+            const c = i % COLS;
+            const x = offsetX + c * (CELL_SIZE + GAP);
+            const y = offsetY + r * (CELL_SIZE + GAP);
+            const card = cards[i];
+
+            if (card.isMatched) {
+                ctx.globalAlpha = 0.5;
+            } else {
+                ctx.globalAlpha = 1.0;
+            }
+
+            // Card Back/Front
+            ctx.fillStyle = card.isFlipped || card.isMatched ? '#fff' : '#ec4899';
+            ctx.beginPath();
+            ctx.roundRect(x, y, CELL_SIZE, CELL_SIZE, 10);
+            ctx.fill();
+
+            // Content
+            if (card.isFlipped || card.isMatched) {
+                ctx.font = `${CELL_SIZE * 0.6}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'black';
+                ctx.fillText(card.emoji, x + CELL_SIZE/2, y + CELL_SIZE/2);
+            } else {
+                ctx.font = `${CELL_SIZE * 0.4}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'white';
+                ctx.fillText('?', x + CELL_SIZE/2, y + CELL_SIZE/2);
+            }
+        }
+        ctx.globalAlpha = 1.0;
+    }
+
+    canvas.addEventListener('click', e => {
+        if (isProcessing) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        // Find clicked card
+        for(let i=0; i<cards.length; i++) {
+            const r = Math.floor(i / COLS);
+            const c = i % COLS;
+            const x = offsetX + c * (CELL_SIZE + GAP);
+            const y = offsetY + r * (CELL_SIZE + GAP);
+
+            if (mx > x && mx < x + CELL_SIZE && my > y && my < y + CELL_SIZE) {
+                if (!cards[i].isFlipped && !cards[i].isMatched) {
+                    flipCard(i);
+                }
+                break;
+            }
+        }
+    });
+
+    function flipCard(index: number) {
+        cards[index].isFlipped = true;
+        flippedCards.push(index);
+        draw();
+
+        if (flippedCards.length === 2) {
+            isProcessing = true;
+            const c1 = cards[flippedCards[0]];
+            const c2 = cards[flippedCards[1]];
+
+            if (c1.emoji === c2.emoji) {
+                // Match
+                c1.isMatched = true;
+                c2.isMatched = true;
+                flippedCards = [];
+                isProcessing = false;
+                score += 10;
+                matches++;
+                window.updateScore(score);
+                draw();
+
+                if (matches === EMOJIS.length) {
+                    setTimeout(() => window.showGameOver(score), 500);
+                }
+            } else {
+                // No Match
+                setTimeout(() => {
+                    c1.isFlipped = false;
+                    c2.isFlipped = false;
+                    flippedCards = [];
+                    isProcessing = false;
+                    draw();
+                }, 1000);
+            }
+        }
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    init();
+
+    window.addEventListener('game-restart', init);
+</script>

@@ -1,0 +1,149 @@
+<canvas id="tictactoe-canvas" class="w-full h-full block cursor-pointer"></canvas>
+
+<script>
+    const canvas = document.getElementById('tictactoe-canvas') as HTMLCanvasElement;
+    const ctx = canvas.getContext('2d')!;
+
+    // Config
+    let CELL_SIZE = 100;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    // State
+    let board = ['', '', '', '', '', '', '', '', ''];
+    let currentPlayer = 'X';
+    let isGameOver = false;
+    let winner: string | null = null;
+
+    function resize() {
+        const parent = canvas.parentElement;
+        if (parent) {
+            canvas.width = parent.clientWidth;
+            canvas.height = parent.clientHeight;
+            CELL_SIZE = Math.min(canvas.width, canvas.height) / 3 * 0.8;
+            offsetX = (canvas.width - CELL_SIZE * 3) / 2;
+            offsetY = (canvas.height - CELL_SIZE * 3) / 2;
+            draw();
+        }
+    }
+
+    function init() {
+        board = ['', '', '', '', '', '', '', '', ''];
+        currentPlayer = 'X';
+        isGameOver = false;
+        winner = null;
+        window.updateScore(0);
+        draw();
+    }
+
+    function checkWinner() {
+        const wins = [
+            [0,1,2], [3,4,5], [6,7,8], // Rows
+            [0,3,6], [1,4,7], [2,5,8], // Cols
+            [0,4,8], [2,4,6]           // Diagonals
+        ];
+
+        for (let combo of wins) {
+            if (board[combo[0]] && board[combo[0]] === board[combo[1]] && board[combo[0]] === board[combo[2]]) {
+                return board[combo[0]];
+            }
+        }
+        if (!board.includes('')) return 'Draw';
+        return null;
+    }
+
+    function aiMove() {
+        if (isGameOver) return;
+        
+        // Simple AI: Random empty spot
+        const emptyIndices = board.map((v, i) => v === '' ? i : -1).filter(i => i !== -1);
+        if (emptyIndices.length > 0) {
+            const move = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
+            board[move] = 'O';
+            
+            const result = checkWinner();
+            if (result) {
+                isGameOver = true;
+                winner = result;
+                setTimeout(() => window.showGameOver(result === 'O' ? 0 : 0), 500);
+            } else {
+                currentPlayer = 'X';
+            }
+            draw();
+        }
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.translate(offsetX, offsetY);
+
+        // Grid
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        // Verticals
+        ctx.moveTo(CELL_SIZE, 0); ctx.lineTo(CELL_SIZE, CELL_SIZE*3);
+        ctx.moveTo(CELL_SIZE*2, 0); ctx.lineTo(CELL_SIZE*2, CELL_SIZE*3);
+        // Horizontals
+        ctx.moveTo(0, CELL_SIZE); ctx.lineTo(CELL_SIZE*3, CELL_SIZE);
+        ctx.moveTo(0, CELL_SIZE*2); ctx.lineTo(CELL_SIZE*3, CELL_SIZE*2);
+        ctx.stroke();
+
+        // Symbols
+        ctx.font = `${CELL_SIZE * 0.6}px "Press Start 2P"`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        for(let i=0; i<9; i++) {
+            const r = Math.floor(i / 3);
+            const c = i % 3;
+            const x = c * CELL_SIZE + CELL_SIZE/2;
+            const y = r * CELL_SIZE + CELL_SIZE/2;
+            
+            if (board[i] === 'X') {
+                ctx.fillStyle = '#ef4444';
+                ctx.fillText('X', x, y);
+            } else if (board[i] === 'O') {
+                ctx.fillStyle = '#3b82f6';
+                ctx.fillText('O', x, y);
+            }
+        }
+
+        ctx.translate(-offsetX, -offsetY);
+    }
+
+    canvas.addEventListener('click', e => {
+        if (isGameOver || currentPlayer !== 'X') return;
+
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left - offsetX;
+        const y = e.clientY - rect.top - offsetY;
+
+        if (x < 0 || x > CELL_SIZE*3 || y < 0 || y > CELL_SIZE*3) return;
+
+        const c = Math.floor(x / CELL_SIZE);
+        const r = Math.floor(y / CELL_SIZE);
+        const idx = r * 3 + c;
+
+        if (board[idx] === '') {
+            board[idx] = 'X';
+            draw();
+            
+            const result = checkWinner();
+            if (result) {
+                isGameOver = true;
+                winner = result;
+                setTimeout(() => window.showGameOver(result === 'X' ? 100 : 0), 500);
+            } else {
+                currentPlayer = 'O';
+                setTimeout(aiMove, 500);
+            }
+        }
+    });
+
+    window.addEventListener('resize', resize);
+    resize();
+    init();
+
+    window.addEventListener('game-restart', init);
+</script>

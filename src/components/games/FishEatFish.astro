@@ -1,0 +1,233 @@
+<canvas id="fish-canvas" class="w-full h-full block cursor-none"></canvas>
+
+<script>
+    const canvas = document.getElementById('fish-canvas') as HTMLCanvasElement;
+    const ctx = canvas.getContext('2d')!;
+
+    // State
+    let player = { x: 0, y: 0, size: 20, color: '#fbbf24' };
+    let fishes: Fish[] = [];
+    let bubbles: Bubble[] = [];
+    let score = 0;
+    let isGameOver = false;
+    let lastTime = 0;
+    let spawnTimer = 0;
+    let mouse = { x: 0, y: 0 };
+
+    class Fish {
+        x: number;
+        y: number;
+        vx: number;
+        size: number;
+        color: string;
+        direction: number; // 1 or -1
+
+        constructor(w: number, h: number, playerSize: number) {
+            this.size = Math.max(10, playerSize * (Math.random() * 1.5 + 0.5)); // Some smaller, some bigger
+            if (Math.random() < 0.3) this.size = playerSize * 0.5; // Bonus small fish
+            
+            this.direction = Math.random() > 0.5 ? 1 : -1;
+            this.x = this.direction === 1 ? -this.size : w + this.size;
+            this.y = Math.random() * (h - this.size);
+            this.vx = (Math.random() * 2 + 1) * this.direction;
+            this.color = `hsl(${Math.random() * 360}, 70%, 60%)`;
+        }
+
+        update() {
+            this.x += this.vx;
+        }
+
+        draw(ctx: CanvasRenderingContext2D) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.scale(this.direction, 1); // Flip if moving left
+            
+            // Body
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, this.size, this.size/2, 0, 0, Math.PI*2);
+            ctx.fill();
+            
+            // Tail
+            ctx.beginPath();
+            ctx.moveTo(-this.size, 0);
+            ctx.lineTo(-this.size - 10, -10);
+            ctx.lineTo(-this.size - 10, 10);
+            ctx.fill();
+
+            // Eye
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(this.size/2, -this.size/4, this.size/5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(this.size/2 + 2, -this.size/4, this.size/10, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+    }
+
+    class Bubble {
+        x: number;
+        y: number;
+        vy: number;
+        size: number;
+
+        constructor(w: number, h: number) {
+            this.x = Math.random() * w;
+            this.y = h + 10;
+            this.vy = -(Math.random() * 1 + 0.5);
+            this.size = Math.random() * 5 + 2;
+        }
+
+        update() {
+            this.y += this.vy;
+        }
+
+        draw(ctx: CanvasRenderingContext2D) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+            ctx.stroke();
+        }
+    }
+
+    function resize() {
+        const parent = canvas.parentElement;
+        if (parent) {
+            canvas.width = parent.clientWidth;
+            canvas.height = parent.clientHeight;
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+        }
+    }
+
+    function gameOver() {
+        isGameOver = true;
+        window.showGameOver(score);
+    }
+
+    function loop(timestamp: number) {
+        if (isGameOver) return;
+
+        const dt = timestamp - lastTime;
+        lastTime = timestamp;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Background Gradient
+        const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        grad.addColorStop(0, '#0f4c75');
+        grad.addColorStop(1, '#1b262c');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Bubbles
+        if (Math.random() < 0.05) bubbles.push(new Bubble(canvas.width, canvas.height));
+        bubbles = bubbles.filter(b => b.y > -20);
+        bubbles.forEach(b => {
+            b.update();
+            b.draw(ctx);
+        });
+
+        // Player Movement (Lerp to mouse)
+        player.x += (mouse.x - player.x) * 0.1;
+        player.y += (mouse.y - player.y) * 0.1;
+
+        // Draw Player
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        const facing = mouse.x > player.x ? 1 : -1;
+        ctx.scale(facing, 1);
+        
+        ctx.fillStyle = player.color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, player.size, player.size/1.5, 0, 0, Math.PI*2);
+        ctx.fill();
+        
+        // Player Tail
+        ctx.beginPath();
+        ctx.moveTo(-player.size, 0);
+        ctx.lineTo(-player.size - 15, -15);
+        ctx.lineTo(-player.size - 15, 15);
+        ctx.fill();
+
+        // Player Eye
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(player.size/2, -player.size/4, player.size/4, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(player.size/2 + 2, -player.size/4, player.size/8, 0, Math.PI*2);
+        ctx.fill();
+        
+        ctx.restore();
+
+        // Spawn Fishes
+        spawnTimer += dt;
+        if (spawnTimer > 1000) {
+            fishes.push(new Fish(canvas.width, canvas.height, player.size));
+            spawnTimer = 0;
+        }
+
+        // Update Fishes & Collision
+        fishes = fishes.filter(f => f.x > -100 && f.x < canvas.width + 100);
+        for (let i = fishes.length - 1; i >= 0; i--) {
+            const f = fishes[i];
+            f.update();
+            f.draw(ctx);
+
+            // Collision
+            const dx = player.x - f.x;
+            const dy = player.y - f.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            if (dist < player.size + f.size) {
+                if (player.size > f.size) {
+                    // Eat
+                    score += 10;
+                    player.size += 1; // Grow
+                    window.updateScore(score);
+                    fishes.splice(i, 1);
+                } else {
+                    // Die
+                    gameOver();
+                }
+            }
+        }
+
+        requestAnimationFrame(loop);
+    }
+
+    // Input
+    canvas.addEventListener('mousemove', e => {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = e.clientX - rect.left;
+        mouse.y = e.clientY - rect.top;
+    });
+    
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = e.touches[0].clientX - rect.left;
+        mouse.y = e.touches[0].clientY - rect.top;
+    }, {passive: false});
+
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(loop);
+
+    window.addEventListener('game-restart', () => {
+        score = 0;
+        player.size = 20;
+        isGameOver = false;
+        fishes = [];
+        bubbles = [];
+        window.updateScore(0);
+        lastTime = performance.now();
+        requestAnimationFrame(loop);
+    });
+</script>

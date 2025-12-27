@@ -1,0 +1,168 @@
+<canvas id="flappy-canvas" class="w-full h-full block cursor-pointer"></canvas>
+
+<script>
+    const canvas = document.getElementById('flappy-canvas') as HTMLCanvasElement;
+    const ctx = canvas.getContext('2d')!;
+
+    // Config
+    const GRAVITY = 0.25;
+    const JUMP = -6;
+    const PIPE_SPEED = 3;
+    const PIPE_SPAWN_RATE = 120; // Frames
+    const PIPE_GAP = 150;
+
+    // State
+    let bird = { y: 0, vy: 0, x: 50, radius: 15 };
+    let pipes: { x: number, topHeight: number, passed: boolean }[] = [];
+    let frameCount = 0;
+    let score = 0;
+    let isGameOver = false;
+    let gameStarted = false;
+
+    function resize() {
+        const parent = canvas.parentElement;
+        if (parent) {
+            canvas.width = parent.clientWidth;
+            canvas.height = parent.clientHeight;
+            reset();
+        }
+    }
+
+    function reset() {
+        bird.y = canvas.height / 2;
+        bird.vy = 0;
+        pipes = [];
+        score = 0;
+        frameCount = 0;
+        isGameOver = false;
+        gameStarted = false;
+        window.updateScore(0);
+    }
+
+    function gameOver() {
+        isGameOver = true;
+        window.showGameOver(score);
+    }
+
+    function loop() {
+        if (isGameOver) {
+            // Draw static state
+            return; 
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Background (Simple)
+        ctx.fillStyle = '#70c5ce';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (!gameStarted) {
+            ctx.fillStyle = 'white';
+            ctx.font = '20px "Press Start 2P"';
+            ctx.textAlign = 'center';
+            ctx.fillText('PRESS SPACE OR CLICK', canvas.width/2, canvas.height/2);
+            requestAnimationFrame(loop);
+            return;
+        }
+
+        // Update Bird
+        bird.vy += GRAVITY;
+        bird.y += bird.vy;
+
+        // Floor/Ceiling Collision
+        if (bird.y + bird.radius > canvas.height || bird.y - bird.radius < 0) {
+            gameOver();
+        }
+
+        // Update Pipes
+        if (frameCount % PIPE_SPAWN_RATE === 0) {
+            const minPipe = 50;
+            const maxPipe = canvas.height - PIPE_GAP - minPipe;
+            const topHeight = Math.random() * (maxPipe - minPipe) + minPipe;
+            pipes.push({ x: canvas.width, topHeight, passed: false });
+        }
+
+        pipes.forEach(p => {
+            p.x -= PIPE_SPEED;
+
+            // Collision
+            if (
+                bird.x + bird.radius > p.x && 
+                bird.x - bird.radius < p.x + 60 && 
+                (bird.y - bird.radius < p.topHeight || bird.y + bird.radius > p.topHeight + PIPE_GAP)
+            ) {
+                gameOver();
+            }
+
+            // Score
+            if (!p.passed && bird.x > p.x + 60) {
+                score++;
+                p.passed = true;
+                window.updateScore(score);
+            }
+        });
+
+        pipes = pipes.filter(p => p.x > -100);
+
+        // Draw Pipes
+        ctx.fillStyle = '#73bf2e';
+        ctx.strokeStyle = '#558c22';
+        ctx.lineWidth = 3;
+        pipes.forEach(p => {
+            // Top Pipe
+            ctx.fillRect(p.x, 0, 60, p.topHeight);
+            ctx.strokeRect(p.x, 0, 60, p.topHeight);
+            
+            // Bottom Pipe
+            ctx.fillRect(p.x, p.topHeight + PIPE_GAP, 60, canvas.height - (p.topHeight + PIPE_GAP));
+            ctx.strokeRect(p.x, p.topHeight + PIPE_GAP, 60, canvas.height - (p.topHeight + PIPE_GAP));
+        });
+
+        // Draw Bird
+        ctx.fillStyle = '#f48c32';
+        ctx.beginPath();
+        ctx.arc(bird.x, bird.y, bird.radius, 0, Math.PI*2);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Eye
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(bird.x + 5, bird.y - 5, 5, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(bird.x + 7, bird.y - 5, 2, 0, Math.PI*2);
+        ctx.fill();
+
+        frameCount++;
+        requestAnimationFrame(loop);
+    }
+
+    function jump() {
+        if (isGameOver) return;
+        if (!gameStarted) {
+            gameStarted = true;
+        }
+        bird.vy = JUMP;
+    }
+
+    // Input
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') jump();
+    });
+    canvas.addEventListener('mousedown', jump);
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        jump();
+    });
+
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(loop);
+
+    window.addEventListener('game-restart', () => {
+        reset();
+        requestAnimationFrame(loop);
+    });
+</script>

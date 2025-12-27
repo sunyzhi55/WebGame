@@ -1,0 +1,41 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const games = [
+    { id: 'fruit-ninja', title: 'Fruit Ninja', icon: '🍉', color: 'bg-red-500' },
+    { id: 'snake', title: 'Snake', icon: '🐍', color: 'bg-green-600' },
+    { id: 'fish-eat-fish', title: 'Fish Eat Fish', icon: '🐟', color: 'bg-blue-500' },
+    { id: 'pvz', title: 'PvZ Lite', icon: '🌻', color: 'bg-green-400' },
+    { id: 'breakout', title: 'Breakout', icon: '🧱', color: 'bg-purple-500' },
+    { id: '2048', title: '2048', icon: '🔢', color: 'bg-yellow-500' },
+    { id: 'flappy-bird', title: 'Flappy Bird', icon: '🐦', color: 'bg-sky-400' },
+    { id: 'minesweeper', title: 'Minesweeper', icon: '💣', color: 'bg-gray-500' },
+    { id: 'tic-tac-toe', title: 'Tic Tac Toe', icon: '❌', color: 'bg-indigo-500' },
+    { id: 'memory-match', title: 'Memory Match', icon: '🃏', color: 'bg-pink-500' },
+];
+
+const base = import.meta.env.BASE_URL;
+---
+
+<Layout title="Retro Arcade Hub">
+	<main class="container mx-auto px-4 py-8">
+		<header class="text-center mb-12">
+			<h1 class="text-4xl md:text-6xl font-arcade text-transparent bg-clip-text bg-gradient-to-r from-arcade-pink to-yellow-400 mb-4">
+				RETRO ARCADE HUB
+			</h1>
+			<p class="text-gray-400 font-arcade text-sm">SELECT A GAME TO START</p>
+		</header>
+
+		<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+			{games.map((game) => (
+				<a href={`${base}/games/${game.id}`} class="group relative block">
+					<div class={`absolute inset-0 ${game.color} rounded-lg transform translate-x-1 translate-y-1 transition-transform group-hover:translate-x-2 group-hover:translate-y-2`}></div>
+					<div class="relative bg-arcade-purple border-2 border-white/10 rounded-lg p-6 h-40 flex flex-col items-center justify-center hover:-translate-y-1 transition-transform duration-200">
+						<div class="text-4xl mb-3 group-hover:scale-110 transition-transform duration-200">{game.icon}</div>
+						<h2 class="font-arcade text-sm text-center text-white group-hover:text-yellow-300">{game.title}</h2>
+					</div>
+				</a>
+			))}
+		</div>
+	</main>
+</Layout>

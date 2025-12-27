@@ -1,0 +1,379 @@
+<canvas id="game-canvas" class="w-full h-full block cursor-none touch-none"></canvas>
+
+<script>
+    const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
+    const ctx = canvas.getContext('2d')!;
+    
+    // Game State
+    let score = 0;
+    let lives = 3;
+    let isGameOver = false;
+    let fruits: (Fruit | SlicedFruit)[] = [];
+    let particles: Particle[] = [];
+    let bladePoints: {x: number, y: number, life: number}[] = [];
+    let lastTime = 0;
+    let spawnTimer = 0;
+    let spawnInterval = 1000;
+    let isMouseDown = false;
+    
+    // Configuration
+    const GRAVITY = 0.25;
+    
+    const FRUIT_TYPES = [
+        { emoji: '🍎', color: '#ff5252' },
+        { emoji: '🍌', color: '#ffeb3b' },
+        { emoji: '🍉', color: '#4caf50' },
+        { emoji: '🍇', color: '#9c27b0' },
+        { emoji: '🍍', color: '#fdd835' },
+        { emoji: '🥝', color: '#8bc34a' },
+        { emoji: '🍊', color: '#ff9800' },
+        { emoji: '🍑', color: '#ffccbc' }
+    ];
+
+    class Fruit {
+        x: number;
+        y: number;
+        vx: number;
+        vy: number;
+        rotation: number;
+        rotationSpeed: number;
+        size: number;
+        emoji: string;
+        color: string;
+        isBomb: boolean;
+        active: boolean = true;
+        sliced: boolean = false;
+
+        constructor(w: number, h: number) {
+            this.x = Math.random() * (w * 0.8) + (w * 0.1);
+            this.y = h + 50;
+            this.vx = (Math.random() - 0.5) * 8;
+            this.vy = -(Math.random() * 8 + 12);
+            this.rotation = 0;
+            this.rotationSpeed = (Math.random() - 0.5) * 0.2;
+            this.size = 50;
+            
+            this.isBomb = Math.random() < 0.15;
+            
+            if (this.isBomb) {
+                this.emoji = '💣';
+                this.color = '#333';
+            } else {
+                const type = FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
+                this.emoji = type.emoji;
+                this.color = type.color;
+            }
+        }
+
+        update() {
+            this.vy += GRAVITY;
+            this.x += this.vx;
+            this.y += this.vy;
+            this.rotation += this.rotationSpeed;
+
+            if (this.y > canvas.height + 100) {
+                this.active = false;
+                if (!this.isBomb && !this.sliced && !isGameOver) {
+                    loseLife();
+                }
+            }
+        }
+
+        draw(ctx: CanvasRenderingContext2D) {
+            if (!this.active) return;
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rotation);
+            ctx.font = `${this.size * 1.5}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.emoji, 0, 5);
+            ctx.restore();
+        }
+    }
+
+    class SlicedFruit {
+        x: number;
+        y: number;
+        vx: number;
+        vy: number;
+        rotation: number;
+        rotationSpeed: number;
+        emoji: string;
+        size: number;
+        direction: 'left' | 'right';
+        active: boolean = true;
+
+        constructor(original: Fruit, direction: 'left' | 'right') {
+            this.x = original.x;
+            this.y = original.y;
+            this.vx = original.vx + (direction === 'left' ? -2 : 2);
+            this.vy = original.vy;
+            this.rotation = original.rotation;
+            this.rotationSpeed = original.rotationSpeed + (direction === 'left' ? -0.1 : 0.1);
+            this.emoji = original.emoji;
+            this.size = original.size;
+            this.direction = direction;
+        }
+
+        update() {
+            this.vy += GRAVITY;
+            this.x += this.vx;
+            this.y += this.vy;
+            this.rotation += this.rotationSpeed;
+            if (this.y > canvas.height + 100) this.active = false;
+        }
+
+        draw(ctx: CanvasRenderingContext2D) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rotation);
+            ctx.beginPath();
+            if (this.direction === 'left') {
+                ctx.rect(-this.size, -this.size, this.size, this.size * 2);
+            } else {
+                ctx.rect(0, -this.size, this.size, this.size * 2);
+            }
+            ctx.clip();
+            ctx.font = `${this.size * 1.5}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.emoji, 0, 5);
+            ctx.restore();
+        }
+    }
+
+    class Particle {
+        x: number;
+        y: number;
+        vx: number;
+        vy: number;
+        life: number = 1.0;
+        color: string;
+        size: number;
+
+        constructor(x: number, y: number, color: string) {
+            this.x = x;
+            this.y = y;
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 5 + 2;
+            this.vx = Math.cos(angle) * speed;
+            this.vy = Math.sin(angle) * speed;
+            this.color = color;
+            this.size = Math.random() * 4 + 2;
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += 0.1;
+            this.life -= 0.02;
+        }
+
+        draw(ctx: CanvasRenderingContext2D) {
+            ctx.globalAlpha = Math.max(0, this.life);
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+    }
+
+    function resize() {
+        const parent = canvas.parentElement;
+        if (parent) {
+            canvas.width = parent.clientWidth;
+            canvas.height = parent.clientHeight;
+        }
+    }
+
+    function loseLife() {
+        lives--;
+        // Update UI hearts if we had them, but here we just check game over
+        if (lives <= 0) {
+            gameOver();
+        }
+    }
+
+    function gameOver() {
+        isGameOver = true;
+        window.showGameOver(score);
+    }
+
+    function createExplosion(x: number, y: number) {
+        for (let i = 0; i < 30; i++) {
+            particles.push(new Particle(x, y, i % 2 === 0 ? '#fff' : '#f00'));
+        }
+    }
+
+    function createSplash(x: number, y: number, color: string) {
+        for (let i = 0; i < 15; i++) {
+            particles.push(new Particle(x, y, color));
+        }
+    }
+
+    function checkCollisions(mx: number, my: number) {
+        if (isGameOver) return;
+
+        for (let i = fruits.length - 1; i >= 0; i--) {
+            const f = fruits[i];
+            if (f instanceof Fruit && f.active && !f.sliced) {
+                const dx = mx - f.x;
+                const dy = my - f.y;
+                if (dx * dx + dy * dy < f.size * f.size) {
+                    f.sliced = true;
+                    f.active = false;
+
+                    if (f.isBomb) {
+                        createExplosion(f.x, f.y);
+                        gameOver();
+                    } else {
+                        score += 10;
+                        window.updateScore(score);
+                        createSplash(f.x, f.y, f.color);
+                        fruits.push(new SlicedFruit(f, 'left'));
+                        fruits.push(new SlicedFruit(f, 'right'));
+                        
+                        if (score % 50 === 0 && spawnInterval > 400) {
+                            spawnInterval -= 50;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function loop(timestamp: number) {
+        if (isGameOver) return;
+
+        const dt = timestamp - lastTime;
+        lastTime = timestamp;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Spawn
+        spawnTimer += dt;
+        if (spawnTimer > spawnInterval) {
+            spawnTimer = 0;
+            fruits.push(new Fruit(canvas.width, canvas.height));
+        }
+
+        // Update & Draw Fruits
+        for (let i = fruits.length - 1; i >= 0; i--) {
+            const f = fruits[i];
+            // @ts-ignore
+            f.update();
+            // @ts-ignore
+            f.draw(ctx);
+            // @ts-ignore
+            if (!f.active) fruits.splice(i, 1);
+        }
+
+        // Update & Draw Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.update();
+            p.draw(ctx);
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        // Draw Blade
+        if (bladePoints.length > 0) {
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            
+            // Glow
+            ctx.beginPath();
+            bladePoints.forEach((p, i) => {
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            });
+            ctx.lineWidth = 10;
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+            ctx.stroke();
+
+            // Core
+            ctx.beginPath();
+            bladePoints.forEach((p, i) => {
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            });
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+
+            // Decay blade
+            if (!isMouseDown && bladePoints.length > 0) {
+                bladePoints.splice(0, 2);
+            } else if (bladePoints.length > 8) {
+                bladePoints.shift();
+            }
+        }
+
+        requestAnimationFrame(loop);
+    }
+
+    // Input Handling
+    function addBladePoint(x: number, y: number) {
+        bladePoints.push({ x, y, life: 10 });
+    }
+
+    function handleStart(x: number, y: number) {
+        isMouseDown = true;
+        bladePoints = [];
+        addBladePoint(x, y);
+    }
+
+    function handleMove(x: number, y: number) {
+        if (!isMouseDown) return;
+        addBladePoint(x, y);
+        checkCollisions(x, y);
+    }
+
+    function handleEnd() {
+        isMouseDown = false;
+        bladePoints = [];
+    }
+
+    canvas.addEventListener('mousedown', e => {
+        const rect = canvas.getBoundingClientRect();
+        handleStart(e.clientX - rect.left, e.clientY - rect.top);
+    });
+    canvas.addEventListener('mousemove', e => {
+        const rect = canvas.getBoundingClientRect();
+        handleMove(e.clientX - rect.left, e.clientY - rect.top);
+    });
+    canvas.addEventListener('mouseup', handleEnd);
+    canvas.addEventListener('mouseleave', handleEnd);
+
+    canvas.addEventListener('touchstart', e => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        handleStart(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
+    }, {passive: false});
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        handleMove(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
+    }, {passive: false});
+    canvas.addEventListener('touchend', handleEnd);
+
+    // Init
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(loop);
+
+    window.addEventListener('game-restart', () => {
+        score = 0;
+        lives = 3;
+        isGameOver = false;
+        fruits = [];
+        particles = [];
+        bladePoints = [];
+        spawnInterval = 1000;
+        window.updateScore(0);
+        lastTime = performance.now();
+        requestAnimationFrame(loop);
+    });
+</script>

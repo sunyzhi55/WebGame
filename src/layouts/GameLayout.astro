@@ -1,0 +1,83 @@
+---
+import Layout from './Layout.astro';
+
+interface Props {
+	title: string;
+}
+
+const { title } = Astro.props;
+const base = import.meta.env.BASE_URL;
+---
+
+<Layout title={title}>
+    <div class="flex flex-col h-screen max-w-4xl mx-auto p-4">
+        <header class="flex justify-between items-center mb-4 border-b-4 border-arcade-pink pb-2">
+            <a href={base} class="bg-arcade-blue hover:bg-arcade-pink text-white px-4 py-2 rounded font-arcade text-xs transition-colors">
+                ← BACK
+            </a>
+            <h1 class="text-xl md:text-2xl font-arcade text-yellow-400">{title}</h1>
+            <div class="font-arcade text-xs text-green-400">
+                SCORE: <span id="score-display">0</span>
+            </div>
+        </header>
+
+        <main class="flex-grow flex flex-col items-center justify-center bg-black/30 rounded-lg p-4 relative overflow-hidden border-2 border-arcade-purple">
+            <slot />
+            
+            <div id="game-over-screen" class="hidden absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50">
+                <h2 class="text-4xl font-arcade text-red-500 mb-8">GAME OVER</h2>
+                <p class="font-arcade text-white mb-8">SCORE: <span id="final-score">0</span></p>
+                <button id="restart-btn" class="bg-arcade-pink hover:bg-red-600 text-white font-arcade py-4 px-8 rounded transition-transform hover:scale-105">
+                    TRY AGAIN
+                </button>
+            </div>
+        </main>
+
+        <footer class="mt-4 text-center text-gray-500 text-xs font-arcade">
+            Retro Arcade Hub © 2025
+        </footer>
+    </div>
+</Layout>
+
+<script>
+    // Global Game State Management Helper
+    window.updateScore = (score: number) => {
+        const display = document.getElementById('score-display');
+        if (display) display.innerText = score.toString();
+    };
+
+    window.showGameOver = (score: number) => {
+        const screen = document.getElementById('game-over-screen');
+        const finalScore = document.getElementById('final-score');
+        if (screen && finalScore) {
+            finalScore.innerText = score.toString();
+            screen.classList.remove('hidden');
+            screen.classList.add('flex');
+        }
+    };
+
+    window.hideGameOver = () => {
+        const screen = document.getElementById('game-over-screen');
+        if (screen) {
+            screen.classList.add('hidden');
+            screen.classList.remove('flex');
+        }
+    };
+
+    // Restart button logic is handled by individual games listening to the button or re-initializing
+    document.getElementById('restart-btn')?.addEventListener('click', () => {
+        window.hideGameOver();
+        window.dispatchEvent(new CustomEvent('game-restart'));
+    });
+</script>
+
+<script>
+    // Type definition for global window functions
+    declare global {
+        interface Window {
+            updateScore: (score: number) => void;
+            showGameOver: (score: number) => void;
+            hideGameOver: () => void;
+        }
+    }
+</script>

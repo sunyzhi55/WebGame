@@ -1,0 +1,414 @@
+---
+---
+<div class="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4">
+  <h2 class="text-4xl font-bold mb-4 text-neon-blue font-arcade tracking-widest">MINESWEEPER</h2>
+  
+  <div class="flex gap-8 mb-4 text-xl font-mono bg-slate-800 p-3 rounded-lg border-2 border-slate-600 shadow-lg">
+    <div class="flex items-center gap-2">
+      <span>💣</span>
+      <span id="mine-count" class="text-red-400">10</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span>⏱️</span>
+      <span id="timer" class="text-yellow-400">000</span>
+    </div>
+  </div>
+
+  <div class="relative group">
+    <div class="absolute -inset-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg blur opacity-25 group-hover:opacity-75 transition duration-1000 group-hover:duration-200"></div>
+    <canvas id="minesweeperCanvas" width="400" height="400" class="relative bg-slate-800 rounded-lg shadow-2xl cursor-pointer"></canvas>
+  </div>
+
+  <div class="mt-6 flex gap-4">
+    <button id="resetBtn" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow-[0_4px_0_rgb(30,58,138)] active:shadow-[0_0px_0_rgb(30,58,138)] active:translate-y-1 transition-all">
+      NEW GAME
+    </button>
+    <div class="flex gap-2">
+      <button class="difficulty-btn px-4 py-2 bg-slate-700 hover:bg-slate-600 text-sm rounded border border-slate-600" data-diff="easy">EASY</button>
+      <button class="difficulty-btn px-4 py-2 bg-slate-700 hover:bg-slate-600 text-sm rounded border border-slate-600" data-diff="medium">MED</button>
+      <button class="difficulty-btn px-4 py-2 bg-slate-700 hover:bg-slate-600 text-sm rounded border border-slate-600" data-diff="hard">HARD</button>
+    </div>
+  </div>
+  
+  <p class="mt-4 text-slate-400 text-sm">Left Click: Reveal • Right Click: Flag</p>
+</div>
+
+<script>
+  const canvas = document.getElementById('minesweeperCanvas') as HTMLCanvasElement;
+  const ctx = canvas.getContext('2d')!;
+  const mineCountDisplay = document.getElementById('mine-count')!;
+  const timerDisplay = document.getElementById('timer')!;
+  const resetBtn = document.getElementById('resetBtn')!;
+  const difficultyBtns = document.querySelectorAll('.difficulty-btn');
+
+  // Game Configuration
+  interface Config {
+    rows: number;
+    cols: number;
+    mines: number;
+    cellSize: number;
+  }
+
+  const CONFIG: Record<string, Config> = {
+    easy: { rows: 9, cols: 9, mines: 10, cellSize: 40 },
+    medium: { rows: 16, cols: 16, mines: 40, cellSize: 25 },
+    hard: { rows: 16, cols: 30, mines: 99, cellSize: 20 } // Adjusted for canvas size
+  };
+
+  let currentDiff = 'easy';
+  let rows = CONFIG.easy.rows;
+  let cols = CONFIG.easy.cols;
+  let mines = CONFIG.easy.mines;
+  let cellSize = CONFIG.easy.cellSize;
+  
+  interface Cell {
+    isMine: boolean;
+    revealed: boolean;
+    flagged: boolean;
+    neighborMines: number;
+  }
+
+  let grid: Cell[][] = [];
+  let gameOver = false;
+  let gameWon = false;
+  let firstClick = true;
+  let flags = 0;
+  let startTime = 0;
+  let timerInterval: number;
+
+  // Colors
+  const COLORS = {
+    hidden: '#334155', // slate-700
+    hiddenLight: '#475569', // slate-600
+    hiddenDark: '#1e293b', // slate-800
+    revealed: '#cbd5e1', // slate-300
+    hover: '#475569',
+    numbers: [
+      '', '#2563eb', '#16a34a', '#dc2626', '#7c3aed', '#db2777', '#0891b2', '#000000', '#808080'
+    ]
+  };
+
+  let hoverCell = { r: -1, c: -1 };
+
+  function initGame(difficulty = currentDiff) {
+    currentDiff = difficulty;
+    const conf = CONFIG[difficulty];
+    
+    // Adjust canvas size based on difficulty
+    if (difficulty === 'hard') {
+      // Hard mode needs wider canvas
+      rows = 16;
+      cols = 30;
+      mines = 99;
+      cellSize = 25;
+      canvas.width = cols * cellSize;
+      canvas.height = rows * cellSize;
+    } else if (difficulty === 'medium') {
+      rows = 16;
+      cols = 16;
+      mines = 40;
+      cellSize = 25;
+      canvas.width = cols * cellSize;
+      canvas.height = rows * cellSize;
+    } else {
+      rows = 9;
+      cols = 9;
+      mines = 10;
+      cellSize = 40;
+      canvas.width = cols * cellSize;
+      canvas.height = rows * cellSize;
+    }
+
+    grid = [];
+    gameOver = false;
+    gameWon = false;
+    firstClick = true;
+    flags = 0;
+    stopTimer();
+    timerDisplay.textContent = '000';
+    mineCountDisplay.textContent = mines.toString();
+
+    // Initialize grid
+    for (let r = 0; r < rows; r++) {
+      grid[r] = [];
+      for (let c = 0; c < cols; c++) {
+        grid[r][c] = {
+          isMine: false,
+          revealed: false,
+          flagged: false,
+          neighborMines: 0
+        };
+      }
+    }
+
+    draw();
+  }
+
+  function placeMines(excludeR: number, excludeC: number) {
+    let minesPlaced = 0;
+    while (minesPlaced < mines) {
+      const r = Math.floor(Math.random() * rows);
+      const c = Math.floor(Math.random() * cols);
+      
+      // Don't place mine on first click or if already mine
+      if (!grid[r][c].isMine && (Math.abs(r - excludeR) > 1 || Math.abs(c - excludeC) > 1)) {
+        grid[r][c].isMine = true;
+        minesPlaced++;
+      }
+    }
+
+    // Calculate numbers
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (!grid[r][c].isMine) {
+          let count = 0;
+          for (let i = -1; i <= 1; i++) {
+            for (let j = -1; j <= 1; j++) {
+              if (r+i >= 0 && r+i < rows && c+j >= 0 && c+j < cols && grid[r+i][c+j].isMine) {
+                count++;
+              }
+            }
+          }
+          grid[r][c].neighborMines = count;
+        }
+      }
+    }
+  }
+
+  function reveal(r: number, c: number) {
+    if (r < 0 || r >= rows || c < 0 || c >= cols || grid[r][c].revealed || grid[r][c].flagged || gameOver) return;
+
+    if (firstClick) {
+      firstClick = false;
+      placeMines(r, c);
+      startTimer();
+    }
+
+    grid[r][c].revealed = true;
+
+    if (grid[r][c].isMine) {
+      gameOver = true;
+      revealAllMines();
+      draw();
+      return;
+    }
+
+    if (grid[r][c].neighborMines === 0) {
+      // Flood fill
+      for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+          reveal(r + i, c + j);
+        }
+      }
+    }
+
+    checkWin();
+    draw();
+  }
+
+  function toggleFlag(r: number, c: number) {
+    if (r < 0 || r >= rows || c < 0 || c >= cols || grid[r][c].revealed || gameOver) return;
+
+    if (!grid[r][c].flagged && flags >= mines) return; // Limit flags
+
+    grid[r][c].flagged = !grid[r][c].flagged;
+    flags += grid[r][c].flagged ? 1 : -1;
+    mineCountDisplay.textContent = (mines - flags).toString();
+    draw();
+  }
+
+  function revealAllMines() {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (grid[r][c].isMine) {
+          grid[r][c].revealed = true;
+        }
+      }
+    }
+  }
+
+  function checkWin() {
+    let unrevealedSafeCells = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (!grid[r][c].isMine && !grid[r][c].revealed) {
+          unrevealedSafeCells++;
+        }
+      }
+    }
+    if (unrevealedSafeCells === 0) {
+      gameWon = true;
+      gameOver = true;
+      stopTimer();
+      // Flag all mines
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (grid[r][c].isMine) {
+            grid[r][c].flagged = true;
+          }
+        }
+      }
+      flags = mines;
+      mineCountDisplay.textContent = '0';
+      draw();
+    }
+  }
+
+  function startTimer() {
+    startTime = Date.now();
+    timerInterval = window.setInterval(() => {
+      const delta = Math.floor((Date.now() - startTime) / 1000);
+      timerDisplay.textContent = delta.toString().padStart(3, '0');
+    }, 1000);
+  }
+
+  function stopTimer() {
+    clearInterval(timerInterval);
+  }
+
+  function drawCell(r: number, c: number, x: number, y: number) {
+    const cell = grid[r][c];
+    
+    if (cell.revealed) {
+      if (cell.isMine) {
+        ctx.fillStyle = '#ef4444'; // Red background for mine
+        ctx.fillRect(x, y, cellSize, cellSize);
+        ctx.strokeStyle = '#b91c1c';
+        ctx.strokeRect(x, y, cellSize, cellSize);
+        
+        ctx.font = `${cellSize * 0.6}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#000';
+        ctx.fillText('💣', x + cellSize/2, y + cellSize/2);
+      } else {
+        ctx.fillStyle = COLORS.revealed;
+        ctx.fillRect(x, y, cellSize, cellSize);
+        ctx.strokeStyle = '#94a3b8';
+        ctx.strokeRect(x, y, cellSize, cellSize);
+
+        if (cell.neighborMines > 0) {
+          ctx.font = `bold ${cellSize * 0.6}px monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = COLORS.numbers[cell.neighborMines];
+          ctx.fillText(cell.neighborMines.toString(), x + cellSize/2, y + cellSize/2);
+        }
+      }
+    } else {
+      // Hidden cell with 3D bevel effect
+      ctx.fillStyle = (r === hoverCell.r && c === hoverCell.c && !gameOver) ? COLORS.hover : COLORS.hidden;
+      ctx.fillRect(x, y, cellSize, cellSize);
+      
+      // 3D Bevel
+      const bevelSize = cellSize * 0.1;
+      
+      // Top and Left (Light)
+      ctx.fillStyle = COLORS.hiddenLight;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + cellSize, y);
+      ctx.lineTo(x + cellSize - bevelSize, y + bevelSize);
+      ctx.lineTo(x + bevelSize, y + bevelSize);
+      ctx.lineTo(x + bevelSize, y + cellSize - bevelSize);
+      ctx.lineTo(x, y + cellSize);
+      ctx.fill();
+
+      // Bottom and Right (Dark)
+      ctx.fillStyle = COLORS.hiddenDark;
+      ctx.beginPath();
+      ctx.moveTo(x + cellSize, y + cellSize);
+      ctx.lineTo(x, y + cellSize);
+      ctx.lineTo(x + bevelSize, y + cellSize - bevelSize);
+      ctx.lineTo(x + cellSize - bevelSize, y + cellSize - bevelSize);
+      ctx.lineTo(x + cellSize - bevelSize, y + bevelSize);
+      ctx.lineTo(x + cellSize, y);
+      ctx.fill();
+
+      if (cell.flagged) {
+        ctx.font = `${cellSize * 0.5}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#000';
+        ctx.fillText('🚩', x + cellSize/2, y + cellSize/2);
+      }
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        drawCell(r, c, c * cellSize, r * cellSize);
+      }
+    }
+
+    if (gameOver) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      ctx.font = 'bold 40px "Courier New", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      if (gameWon) {
+        ctx.fillStyle = '#4ade80';
+        ctx.fillText('YOU WIN!', canvas.width/2, canvas.height/2);
+      } else {
+        ctx.fillStyle = '#f87171';
+        ctx.fillText('GAME OVER', canvas.width/2, canvas.height/2);
+      }
+    }
+  }
+
+  // Event Listeners
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const c = Math.floor(x / cellSize);
+    const r = Math.floor(y / cellSize);
+
+    if (c >= 0 && c < cols && r >= 0 && r < rows) {
+      if (hoverCell.r !== r || hoverCell.c !== c) {
+        hoverCell = { r, c };
+        draw();
+      }
+    }
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    hoverCell = { r: -1, c: -1 };
+    draw();
+  });
+
+  canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const c = Math.floor(x / cellSize);
+    const r = Math.floor(y / cellSize);
+
+    if (e.button === 0) { // Left click
+      reveal(r, c);
+    } else if (e.button === 2) { // Right click
+      toggleFlag(r, c);
+    }
+  });
+
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  resetBtn.addEventListener('click', () => initGame());
+
+  difficultyBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const diff = (e.target as HTMLElement).dataset.diff;
+      if (diff) initGame(diff);
+    });
+  });
+
+  // Start
+  initGame();
+
+</script>

@@ -158,6 +158,7 @@
       this.col = Math.floor((x - LAWN_OFFSET_X) / CELL_WIDTH);
       this.row = Math.floor(y / CELL_HEIGHT);
       this.scale = 0; // Pop-in animation
+      this.exploded = false; // For cherry bomb
     }
 
     draw() {
@@ -177,6 +178,22 @@
       ctx.ellipse(0, 35, 25, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
+      // Cherry bomb countdown flash
+      if (this.type === 'cherrybomb' && !this.exploded) {
+        const progress = this.timer / 50;
+        // Shake intensity increases
+        const shake = Math.sin(this.timer * 0.5) * progress * 5;
+        ctx.translate(shake, 0);
+        // Scale pulsing
+        const pulse = 1 + Math.sin(this.timer * 0.4) * 0.15 * progress;
+        ctx.scale(pulse, pulse);
+        // Red glow intensifies
+        if (this.timer > 25) {
+          ctx.shadowColor = '#ef4444';
+          ctx.shadowBlur = 15 + progress * 20;
+        }
+      }
+
       // Plant
       ctx.font = '65px Arial';
       ctx.textAlign = 'center';
@@ -184,6 +201,7 @@
       ctx.fillText(PLANT_TYPES[this.type].symbol, 0, bob);
       
       ctx.restore();
+      ctx.shadowBlur = 0;
 
       // Health bar if damaged
       if (this.hp < this.maxHp) {
@@ -212,11 +230,10 @@
           }
         }
       } else if (this.type === 'cherrybomb') {
-        if (this.timer > 60) { // Explode after 1 sec
+        if (!this.exploded && this.timer >= 50) { // Explode after ~0.8 sec
+          this.exploded = true;
           this.explode();
-          this.hp = 0; // Die
-        } else {
-          // (Optional) Flash handled by symbol; avoid canvas composite side-effects
+          this.hp = 0; // Mark for removal
         }
       }
     }
@@ -231,6 +248,7 @@
           z.takeDamage(500); // Massive damage
         }
       });
+      window.playGameSound?.('explosion');
       
       // Explosion visual
       for(let i=0; i<30; i++) {
@@ -629,6 +647,7 @@
   function animate() {
     if (gameOver) {
       gameOverScreen.classList.remove('hidden');
+      window.playGameSound?.('gameOver');
       return;
     }
 
@@ -656,7 +675,8 @@
     // Mowers (behind plants)
     lawnMowers.forEach(m => { m.update(); m.draw(); });
 
-    // Plants
+    // Plants - remove dead ones (e.g. exploded cherry bombs)
+    plants = plants.filter(p => p.hp > 0);
     plants.forEach(p => { p.update(); p.draw(); });
     
     // Zombies
@@ -698,6 +718,7 @@
         sun += s.value;
         s.markedForDeletion = true;
         sunClicked = true;
+        window.playGameSound?.('score');
         
         // Sparkle particle
         for(let j=0; j<10; j++) {
@@ -723,6 +744,7 @@
             sun -= cost;
             plants.push(new Plant(LAWN_OFFSET_X + col * CELL_WIDTH, row * CELL_HEIGHT, selectedPlant));
             selectedPlant = null; // Deselect after placement
+            window.playGameSound?.('place');
             
             // Dust particles
             for(let j=0; j<10; j++) {

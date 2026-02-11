@@ -6,7 +6,7 @@
 
     // Config
     const GRID_SIZE = 20;
-    const SPEED = 100; // ms per move
+    const BASE_SPEED = 120; // ms per move
 
     // State
     let snake: {x: number, y: number}[] = [];
@@ -19,6 +19,13 @@
     let moveTimer = 0;
     let cols = 0;
     let rows = 0;
+    let gameStarted = false;
+    let bestScore = 0;
+
+    function getSpeed() {
+        // Speed increases as score grows
+        return Math.max(50, BASE_SPEED - Math.floor(score / 30) * 10);
+    }
 
     function resize() {
         const parent = canvas.parentElement;
@@ -41,6 +48,7 @@
         nextDirection = {x: 1, y: 0};
         score = 0;
         isGameOver = false;
+        gameStarted = false;
         window.updateScore(0);
         spawnFood();
         canvas.focus();
@@ -59,6 +67,8 @@
 
     function gameOver() {
         isGameOver = true;
+        if (score > bestScore) bestScore = score;
+        window.playGameSound?.('gameOver');
         window.showGameOver(score);
     }
 
@@ -84,6 +94,7 @@
         if (head.x === food.x && head.y === food.y) {
             score += 10;
             window.updateScore(score);
+            window.playGameSound?.('eat');
             spawnFood();
         } else {
             snake.pop();
@@ -91,10 +102,29 @@
     }
 
     function draw() {
+        // Background
         ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Draw Food
+        // Grid lines
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+        ctx.lineWidth = 0.5;
+        for (let x = 0; x <= cols; x++) {
+            ctx.beginPath();
+            ctx.moveTo(x * GRID_SIZE, 0);
+            ctx.lineTo(x * GRID_SIZE, rows * GRID_SIZE);
+            ctx.stroke();
+        }
+        for (let y = 0; y <= rows; y++) {
+            ctx.beginPath();
+            ctx.moveTo(0, y * GRID_SIZE);
+            ctx.lineTo(cols * GRID_SIZE, y * GRID_SIZE);
+            ctx.stroke();
+        }
+
+        // Draw Food with glow
+        ctx.shadowColor = '#ff5252';
+        ctx.shadowBlur = 12;
         ctx.fillStyle = '#ff5252';
         ctx.beginPath();
         ctx.arc(
@@ -103,20 +133,70 @@
             GRID_SIZE/2 - 2, 0, Math.PI*2
         );
         ctx.fill();
+        ctx.shadowBlur = 0;
 
-        // Draw Snake
-        ctx.fillStyle = '#4ade80';
+        // Draw Snake with gradient body
         snake.forEach((s, i) => {
-            if (i === 0) ctx.fillStyle = '#86efac'; // Head lighter
-            else ctx.fillStyle = '#4ade80';
-            
-            ctx.fillRect(
-                s.x * GRID_SIZE + 1, 
-                s.y * GRID_SIZE + 1, 
-                GRID_SIZE - 2, 
-                GRID_SIZE - 2
-            );
+            const t = i / snake.length;
+            const r = Math.round(134 - t * 60);
+            const g = Math.round(239 - t * 80);
+            const b = Math.round(128 - t * 40);
+            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+
+            if (i === 0) {
+                // Head: rounded
+                ctx.beginPath();
+                ctx.roundRect(
+                    s.x * GRID_SIZE + 1, s.y * GRID_SIZE + 1,
+                    GRID_SIZE - 2, GRID_SIZE - 2, 5
+                );
+                ctx.fill();
+                // Eyes
+                ctx.fillStyle = '#fff';
+                let ex1 = s.x * GRID_SIZE + GRID_SIZE * 0.3;
+                let ey1 = s.y * GRID_SIZE + GRID_SIZE * 0.3;
+                let ex2 = s.x * GRID_SIZE + GRID_SIZE * 0.7;
+                let ey2 = s.y * GRID_SIZE + GRID_SIZE * 0.3;
+                if (direction.x === -1) { ex1 = s.x * GRID_SIZE + GRID_SIZE * 0.3; ex2 = s.x * GRID_SIZE + GRID_SIZE * 0.3; ey2 = s.y * GRID_SIZE + GRID_SIZE * 0.7; }
+                if (direction.x === 1) { ex1 = s.x * GRID_SIZE + GRID_SIZE * 0.7; ex2 = s.x * GRID_SIZE + GRID_SIZE * 0.7; ey1 = s.y * GRID_SIZE + GRID_SIZE * 0.3; ey2 = s.y * GRID_SIZE + GRID_SIZE * 0.7; }
+                if (direction.y === -1) { ex1 = s.x * GRID_SIZE + GRID_SIZE * 0.3; ey1 = s.y * GRID_SIZE + GRID_SIZE * 0.3; ex2 = s.x * GRID_SIZE + GRID_SIZE * 0.7; ey2 = s.y * GRID_SIZE + GRID_SIZE * 0.3; }
+                if (direction.y === 1) { ex1 = s.x * GRID_SIZE + GRID_SIZE * 0.3; ey1 = s.y * GRID_SIZE + GRID_SIZE * 0.7; ex2 = s.x * GRID_SIZE + GRID_SIZE * 0.7; ey2 = s.y * GRID_SIZE + GRID_SIZE * 0.7; }
+                ctx.beginPath(); ctx.arc(ex1, ey1, 2.5, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(ex2, ey2, 2.5, 0, Math.PI*2); ctx.fill();
+            } else {
+                ctx.beginPath();
+                ctx.roundRect(
+                    s.x * GRID_SIZE + 1.5, s.y * GRID_SIZE + 1.5,
+                    GRID_SIZE - 3, GRID_SIZE - 3, 3
+                );
+                ctx.fill();
+            }
         });
+
+        // Speed indicator
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.font = '10px "Press Start 2P"';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`SPD ${Math.round((1 - getSpeed() / BASE_SPEED) * 100 + 100)}%`, canvas.width - 8, 8);
+
+        if (!gameStarted) {
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.font = '18px "Press Start 2P"';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🐍 SNAKE', canvas.width/2, canvas.height/2 - 40);
+            ctx.font = '10px "Press Start 2P"';
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.fillText('Arrow Keys / Swipe', canvas.width/2, canvas.height/2);
+            ctx.fillText('Press any key to start', canvas.width/2, canvas.height/2 + 30);
+            if (bestScore > 0) {
+                ctx.fillStyle = '#fbbf24';
+                ctx.fillText(`BEST: ${bestScore}`, canvas.width/2, canvas.height/2 + 60);
+            }
+        }
     }
 
     function loop(timestamp: number) {
@@ -125,18 +205,27 @@
         const dt = timestamp - lastTime;
         lastTime = timestamp;
 
-        moveTimer += dt;
-        if (moveTimer > SPEED) {
-            update();
-            moveTimer = 0;
+        if (gameStarted) {
+            moveTimer += dt;
+            if (moveTimer > getSpeed()) {
+                update();
+                moveTimer = 0;
+            }
         }
 
         draw();
         requestAnimationFrame(loop);
     }
 
+    function startGame() {
+        if (!gameStarted && !isGameOver) {
+            gameStarted = true;
+        }
+    }
+
     // Input
     window.addEventListener('keydown', e => {
+        startGame();
         switch(e.key) {
             case 'ArrowUp':
                 if (direction.y === 0) nextDirection = {x: 0, y: -1};
@@ -160,6 +249,7 @@
         touchStartX = e.touches[0].clientX;
         touchStartY = e.touches[0].clientY;
         e.preventDefault();
+        startGame();
     }, {passive: false});
 
     canvas.addEventListener('touchmove', e => {

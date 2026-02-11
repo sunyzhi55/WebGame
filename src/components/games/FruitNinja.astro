@@ -198,6 +198,7 @@
 
     function gameOver() {
         isGameOver = true;
+        window.playGameSound?.('gameOver');
         window.showGameOver(score);
     }
 
@@ -227,10 +228,12 @@
 
                     if (f.isBomb) {
                         createExplosion(f.x, f.y);
+                        window.playGameSound?.('explosion');
                         gameOver();
                     } else {
                         score += 10;
                         window.updateScore(score);
+                        window.playGameSound?.('match');
                         createSplash(f.x, f.y, f.color);
                         fruits.push(new SlicedFruit(f, 'left'));
                         fruits.push(new SlicedFruit(f, 'right'));
@@ -276,6 +279,23 @@
             p.update();
             p.draw(ctx);
             if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        // Draw Lives
+        for (let i = 0; i < lives; i++) {
+            ctx.font = '28px Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText('❤️', 10 + i * 35, 10);
+        }
+        // Draw lost lives as empty hearts
+        for (let i = lives; i < 3; i++) {
+            ctx.font = '28px Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.globalAlpha = 0.3;
+            ctx.fillText('🖤', 10 + i * 35, 10);
+            ctx.globalAlpha = 1;
         }
 
         // Draw Blade

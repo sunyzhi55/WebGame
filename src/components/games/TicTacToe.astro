@@ -55,22 +55,73 @@
     function aiMove() {
         if (isGameOver) return;
         
-        // Simple AI: Random empty spot
-        const emptyIndices = board.map((v, i) => v === '' ? i : -1).filter(i => i !== -1);
-        if (emptyIndices.length > 0) {
-            const move = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
-            board[move] = 'O';
+        // Minimax AI
+        const bestMove = findBestMove();
+        if (bestMove !== -1) {
+            board[bestMove] = 'O';
+            window.playGameSound?.('place');
             
             const result = checkWinner();
             if (result) {
                 isGameOver = true;
                 winner = result;
-                setTimeout(() => window.showGameOver(result === 'O' ? 0 : 0), 500);
+                if (result === 'Draw') {
+                    setTimeout(() => window.showGameOver(50), 500);
+                } else {
+                    window.playGameSound?.('gameOver');
+                    setTimeout(() => window.showGameOver(0), 500);
+                }
             } else {
                 currentPlayer = 'X';
             }
             draw();
         }
+    }
+
+    function minimax(isMaximizing: boolean, depth: number): number {
+        const result = checkWinner();
+        if (result === 'O') return 10 - depth;
+        if (result === 'X') return depth - 10;
+        if (result === 'Draw') return 0;
+
+        if (isMaximizing) {
+            let best = -Infinity;
+            for (let i = 0; i < 9; i++) {
+                if (board[i] === '') {
+                    board[i] = 'O';
+                    best = Math.max(best, minimax(false, depth + 1));
+                    board[i] = '';
+                }
+            }
+            return best;
+        } else {
+            let best = Infinity;
+            for (let i = 0; i < 9; i++) {
+                if (board[i] === '') {
+                    board[i] = 'X';
+                    best = Math.min(best, minimax(true, depth + 1));
+                    board[i] = '';
+                }
+            }
+            return best;
+        }
+    }
+
+    function findBestMove(): number {
+        let bestScore = -Infinity;
+        let bestIdx = -1;
+        for (let i = 0; i < 9; i++) {
+            if (board[i] === '') {
+                board[i] = 'O';
+                const moveScore = minimax(false, 0);
+                board[i] = '';
+                if (moveScore > bestScore) {
+                    bestScore = moveScore;
+                    bestIdx = i;
+                }
+            }
+        }
+        return bestIdx;
     }
 
     function draw() {
@@ -110,6 +161,20 @@
         }
 
         ctx.translate(-offsetX, -offsetY);
+
+        // Status text
+        if (isGameOver && winner) {
+            ctx.font = `${CELL_SIZE * 0.25}px "Press Start 2P"`;
+            ctx.textAlign = 'center';
+            if (winner === 'X') { ctx.fillStyle = '#4ade80'; ctx.fillText('YOU WIN!', canvas.width/2, offsetY + CELL_SIZE * 3 + 40); }
+            else if (winner === 'O') { ctx.fillStyle = '#ef4444'; ctx.fillText('AI WINS!', canvas.width/2, offsetY + CELL_SIZE * 3 + 40); }
+            else { ctx.fillStyle = '#fbbf24'; ctx.fillText('DRAW!', canvas.width/2, offsetY + CELL_SIZE * 3 + 40); }
+        } else if (!isGameOver) {
+            ctx.font = '12px "Press Start 2P"';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = currentPlayer === 'X' ? 'rgba(239,68,68,0.6)' : 'rgba(59,130,246,0.6)';
+            ctx.fillText(currentPlayer === 'X' ? 'YOUR TURN' : 'AI THINKING...', canvas.width/2, offsetY - 10);
+        }
     }
 
     canvas.addEventListener('click', e => {
@@ -127,13 +192,22 @@
 
         if (board[idx] === '') {
             board[idx] = 'X';
+            window.playGameSound?.('place');
             draw();
             
             const result = checkWinner();
             if (result) {
                 isGameOver = true;
                 winner = result;
-                setTimeout(() => window.showGameOver(result === 'X' ? 100 : 0), 500);
+                if (result === 'X') {
+                    window.playGameSound?.('win');
+                    setTimeout(() => window.showGameOver(100), 500);
+                } else if (result === 'Draw') {
+                    setTimeout(() => window.showGameOver(50), 500);
+                } else {
+                    window.playGameSound?.('gameOver');
+                    setTimeout(() => window.showGameOver(0), 500);
+                }
             } else {
                 currentPlayer = 'O';
                 setTimeout(aiMove, 500);

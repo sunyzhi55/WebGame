@@ -1,4 +1,4 @@
-<canvas id="breakout-canvas" class="w-full h-full block cursor-none"></canvas>
+<canvas id="breakout-canvas" class="w-full h-full block cursor-none" tabindex="0"></canvas>
 
 <script>
     const canvas = document.getElementById('breakout-canvas') as HTMLCanvasElement;
@@ -16,8 +16,10 @@
     let ball = { x: 0, y: 0, vx: 0, vy: 0, speed: 6 };
     let bricks: {x: number, y: number, w: number, h: number, active: boolean, color: string}[] = [];
     let score = 0;
+    let lives = 3;
     let isGameOver = false;
     let gameStarted = false;
+    let levelNum = 1;
 
     function initBricks() {
         bricks = [];
@@ -43,16 +45,23 @@
         }
     }
 
-    function reset() {
-        paddle.x = canvas.width / 2 - PADDLE_WIDTH / 2;
-        paddle.y = canvas.height - 40;
+    function resetBall() {
         ball.x = canvas.width / 2;
         ball.y = canvas.height - 50;
         ball.vx = 0;
         ball.vy = 0;
-        score = 0;
-        isGameOver = false;
         gameStarted = false;
+    }
+
+    function reset() {
+        paddle.x = canvas.width / 2 - PADDLE_WIDTH / 2;
+        paddle.y = canvas.height - 40;
+        resetBall();
+        score = 0;
+        lives = 3;
+        levelNum = 1;
+        ball.speed = 6;
+        isGameOver = false;
         window.updateScore(0);
         initBricks();
     }
@@ -66,9 +75,33 @@
         }
     }
 
-    function gameOver() {
-        isGameOver = true;
-        window.showGameOver(score);
+    function loseLife() {
+        lives--;
+        if (lives <= 0) {
+            isGameOver = true;
+            window.playGameSound?.('gameOver');
+            window.showGameOver(score);
+        } else {
+            window.playGameSound?.('error');
+            resetBall();
+        }
+    }
+
+    function drawLives() {
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        for (let i = 0; i < lives; i++) {
+            ctx.fillText('❤️', 10 + i * 22, 10);
+        }
+    }
+
+    function drawLevel() {
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.font = '12px "Press Start 2P"';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`LV ${levelNum}`, canvas.width - 10, 10);
     }
 
     function loop() {
@@ -76,29 +109,48 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw Paddle
-        ctx.fillStyle = '#3b82f6';
-        ctx.fillRect(paddle.x, paddle.y, PADDLE_WIDTH, PADDLE_HEIGHT);
+        // Draw Paddle with gradient
+        const paddleGrad = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x, paddle.y + PADDLE_HEIGHT);
+        paddleGrad.addColorStop(0, '#60a5fa');
+        paddleGrad.addColorStop(1, '#2563eb');
+        ctx.fillStyle = paddleGrad;
+        ctx.beginPath();
+        ctx.roundRect(paddle.x, paddle.y, PADDLE_WIDTH, PADDLE_HEIGHT, 4);
+        ctx.fill();
 
-        // Draw Ball
+        // Draw Ball with glow
+        ctx.shadowColor = '#fff';
+        ctx.shadowBlur = 12;
         ctx.fillStyle = '#fff';
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI*2);
         ctx.fill();
+        ctx.shadowBlur = 0;
 
-        // Draw Bricks
+        // Draw Bricks with rounded corners
         bricks.forEach(b => {
             if (b.active) {
                 ctx.fillStyle = b.color;
-                ctx.fillRect(b.x, b.y, b.w, b.h);
+                ctx.beginPath();
+                ctx.roundRect(b.x, b.y, b.w, b.h, 3);
+                ctx.fill();
+                // Highlight
+                ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                ctx.fillRect(b.x, b.y, b.w, b.h / 2);
             }
         });
+
+        drawLives();
+        drawLevel();
 
         if (!gameStarted) {
             ctx.fillStyle = 'white';
             ctx.font = '16px "Press Start 2P"';
             ctx.textAlign = 'center';
             ctx.fillText('CLICK TO START', canvas.width/2, canvas.height/2);
+            ctx.font = '10px "Press Start 2P"';
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            ctx.fillText('Mouse/Touch to move paddle', canvas.width/2, canvas.height/2 + 30);
             requestAnimationFrame(loop);
             return;
         }
@@ -115,7 +167,7 @@
             ball.vy = -ball.vy;
         }
         if (ball.y + BALL_RADIUS > canvas.height) {
-            gameOver();
+            loseLife();
         }
 
         // Paddle Collision
@@ -125,10 +177,10 @@
             ball.x > paddle.x &&
             ball.x < paddle.x + PADDLE_WIDTH
         ) {
-            ball.vy = -Math.abs(ball.vy); // Always bounce up
-            // Add english based on where it hit the paddle
+            ball.vy = -Math.abs(ball.vy);
             const hitPoint = ball.x - (paddle.x + PADDLE_WIDTH/2);
             ball.vx = hitPoint * 0.15;
+            window.playGameSound?.('click');
         }
 
         // Brick Collision
@@ -144,11 +196,14 @@
                     b.active = false;
                     score += 10;
                     window.updateScore(score);
+                    window.playGameSound?.('match');
                     
                     if (bricks.every(brick => !brick.active)) {
-                        // Win / Next Level
+                        levelNum++;
                         initBricks();
-                        ball.speed += 1;
+                        ball.speed += 0.5;
+                        resetBall();
+                        window.playGameSound?.('win');
                     }
                 }
             }
@@ -157,20 +212,26 @@
         requestAnimationFrame(loop);
     }
 
-    // Input
+    // Input - Mouse
     canvas.addEventListener('mousemove', e => {
         const rect = canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         paddle.x = mx - PADDLE_WIDTH / 2;
-        
-        // Clamp
         if (paddle.x < 0) paddle.x = 0;
         if (paddle.x > canvas.width - PADDLE_WIDTH) paddle.x = canvas.width - PADDLE_WIDTH;
-
-        if (!gameStarted) {
-            ball.x = paddle.x + PADDLE_WIDTH / 2;
-        }
+        if (!gameStarted) ball.x = paddle.x + PADDLE_WIDTH / 2;
     });
+
+    // Input - Touch
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.touches[0].clientX - rect.left;
+        paddle.x = mx - PADDLE_WIDTH / 2;
+        if (paddle.x < 0) paddle.x = 0;
+        if (paddle.x > canvas.width - PADDLE_WIDTH) paddle.x = canvas.width - PADDLE_WIDTH;
+        if (!gameStarted) ball.x = paddle.x + PADDLE_WIDTH / 2;
+    }, {passive: false});
 
     canvas.addEventListener('click', () => {
         if (!gameStarted && !isGameOver) {
@@ -179,6 +240,15 @@
             ball.vx = (Math.random() - 0.5) * 4;
         }
     });
+
+    canvas.addEventListener('touchstart', e => {
+        e.preventDefault();
+        if (!gameStarted && !isGameOver) {
+            gameStarted = true;
+            ball.vy = -ball.speed;
+            ball.vx = (Math.random() - 0.5) * 4;
+        }
+    }, {passive: false});
 
     window.addEventListener('resize', resize);
     resize();

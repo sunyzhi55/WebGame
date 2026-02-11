@@ -106,6 +106,7 @@
 
     function gameOver() {
         isGameOver = true;
+        window.playGameSound?.('gameOver');
         window.showGameOver(score);
     }
 
@@ -178,7 +179,18 @@
         for (let i = fishes.length - 1; i >= 0; i--) {
             const f = fishes[i];
             f.update();
-            f.draw(ctx);
+            
+            // Draw with danger/safe tint
+            if (f.size > player.size) {
+                // Danger indicator - red glow
+                ctx.save();
+                ctx.shadowColor = 'rgba(255, 0, 0, 0.4)';
+                ctx.shadowBlur = 8;
+                f.draw(ctx);
+                ctx.restore();
+            } else {
+                f.draw(ctx);
+            }
 
             // Collision
             const dx = player.x - f.x;
@@ -191,6 +203,7 @@
                     score += 10;
                     player.size += 1; // Grow
                     window.updateScore(score);
+                    window.playGameSound?.('eat');
                     fishes.splice(i, 1);
                 } else {
                     // Die
@@ -199,7 +212,35 @@
             }
         }
 
+        drawSizeIndicator();
+
         requestAnimationFrame(loop);
+    }
+
+    function drawSizeIndicator() {
+        const barWidth = 120;
+        const barHeight = 12;
+        const x = canvas.width - barWidth - 15;
+        const y = 15;
+        const growth = Math.min((player.size - 20) / 80, 1); // Progress 0-1
+
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(x - 2, y - 2, barWidth + 4, barHeight + 4);
+        
+        const grad = ctx.createLinearGradient(x, y, x + barWidth, y);
+        grad.addColorStop(0, '#4ade80');
+        grad.addColorStop(1, '#fbbf24');
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, y, barWidth * growth, barHeight);
+        
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.strokeRect(x, y, barWidth, barHeight);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.font = '10px "Press Start 2P"';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`SIZE: ${Math.round(player.size)}`, x - 5, y);
     }
 
     // Input

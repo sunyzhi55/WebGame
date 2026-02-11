@@ -12,9 +12,14 @@ const base = import.meta.env.BASE_URL;
 <Layout title={title}>
     <div class="flex flex-col h-screen max-w-4xl mx-auto p-4">
         <header class="flex justify-between items-center mb-4 border-b-4 border-arcade-pink pb-2">
-            <a href={base} class="bg-arcade-blue hover:bg-arcade-pink text-white px-4 py-2 rounded font-arcade text-xs transition-colors">
-                ← BACK
-            </a>
+            <div class="flex items-center gap-2">
+                <a href={base} class="bg-arcade-blue hover:bg-arcade-pink text-white px-4 py-2 rounded font-arcade text-xs transition-colors">
+                    ← BACK
+                </a>
+                <button id="music-toggle" class="w-10 h-10 rounded-full bg-arcade-purple border-2 border-white/20 hover:border-arcade-pink text-white text-lg flex items-center justify-center transition-all hover:scale-110" title="Toggle Music">
+                    🔇
+                </button>
+            </div>
             <h1 class="text-xl md:text-2xl font-arcade text-yellow-400">{title}</h1>
             <div class="font-arcade text-xs text-green-400">
                 SCORE: <span id="score-display">0</span>
@@ -34,7 +39,7 @@ const base = import.meta.env.BASE_URL;
         </main>
 
         <footer class="mt-4 text-center text-gray-500 text-xs font-arcade">
-            Retro Arcade Hub © 2025
+            Retro Arcade Hub © 2025-2026
         </footer>
     </div>
 </Layout>
@@ -78,6 +83,274 @@ const base = import.meta.env.BASE_URL;
             updateScore: (score: number) => void;
             showGameOver: (score: number) => void;
             hideGameOver: () => void;
+            playGameSound: (type: string) => void;
+            gameAudio: any;
         }
     }
+</script>
+
+<script>
+    // === Game Audio System ===
+    class GameAudioManager {
+        ctx: AudioContext | null = null;
+        musicGain: GainNode | null = null;
+        sfxGain: GainNode | null = null;
+        isMusicOn = false;
+        musicLoop: number | null = null;
+        noteIdx = 0;
+
+        init() {
+            if (this.ctx) return;
+            this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            this.musicGain = this.ctx.createGain();
+            this.musicGain.gain.value = 0.12;
+            this.musicGain.connect(this.ctx.destination);
+            this.sfxGain = this.ctx.createGain();
+            this.sfxGain.gain.value = 0.25;
+            this.sfxGain.connect(this.ctx.destination);
+        }
+
+        _beep(freq: number, dur: number, vol: number, type: OscillatorType, dest?: GainNode) {
+            if (!this.ctx) return;
+            const osc = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            osc.type = type;
+            osc.frequency.value = freq;
+            const now = this.ctx.currentTime;
+            g.gain.setValueAtTime(0, now);
+            g.gain.linearRampToValueAtTime(vol, now + 0.015);
+            g.gain.setValueAtTime(vol * 0.8, now + dur * 0.6);
+            g.gain.linearRampToValueAtTime(0, now + dur);
+            osc.connect(g);
+            g.connect(dest || this.sfxGain!);
+            osc.start(now);
+            osc.stop(now + dur + 0.02);
+        }
+
+        _noise(dur: number, vol: number) {
+            if (!this.ctx) return;
+            const len = this.ctx.sampleRate * dur;
+            const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+            const src = this.ctx.createBufferSource();
+            src.buffer = buf;
+            const g = this.ctx.createGain();
+            g.gain.setValueAtTime(vol, this.ctx.currentTime);
+            g.gain.linearRampToValueAtTime(0, this.ctx.currentTime + dur);
+            src.connect(g);
+            g.connect(this.sfxGain!);
+            src.start();
+        }
+
+        playSfx(type: string) {
+            if (!this.ctx || !this.isMusicOn) return;
+            switch (type) {
+                case 'click':
+                    this._beep(800, 0.08, 0.2, 'sine');
+                    break;
+                case 'eat':
+                    this._beep(600, 0.1, 0.25, 'sine');
+                    setTimeout(() => this._beep(900, 0.1, 0.2, 'sine'), 60);
+                    break;
+                case 'match':
+                    this._beep(523, 0.12, 0.3, 'sine');
+                    setTimeout(() => this._beep(659, 0.12, 0.3, 'sine'), 80);
+                    setTimeout(() => this._beep(784, 0.15, 0.25, 'sine'), 160);
+                    break;
+                case 'score':
+                    this._beep(880, 0.12, 0.2, 'triangle');
+                    setTimeout(() => this._beep(1047, 0.18, 0.2, 'triangle'), 100);
+                    break;
+                case 'error':
+                    this._beep(250, 0.18, 0.18, 'sawtooth');
+                    setTimeout(() => this._beep(180, 0.25, 0.12, 'sawtooth'), 140);
+                    break;
+                case 'gameOver':
+                    this._beep(440, 0.2, 0.3, 'sine');
+                    setTimeout(() => this._beep(370, 0.2, 0.3, 'sine'), 200);
+                    setTimeout(() => this._beep(330, 0.2, 0.3, 'sine'), 400);
+                    setTimeout(() => this._beep(262, 0.5, 0.25, 'sine'), 600);
+                    break;
+                case 'win':
+                    this._beep(523, 0.1, 0.3, 'sine');
+                    setTimeout(() => this._beep(659, 0.1, 0.3, 'sine'), 100);
+                    setTimeout(() => this._beep(784, 0.1, 0.3, 'sine'), 200);
+                    setTimeout(() => this._beep(1047, 0.3, 0.3, 'sine'), 300);
+                    break;
+                case 'explosion':
+                    this._noise(0.18, 0.25);
+                    this._beep(120, 0.25, 0.18, 'sawtooth');
+                    break;
+                case 'move':
+                    this._beep(440, 0.05, 0.12, 'sine');
+                    break;
+                case 'drop':
+                    this._beep(500, 0.08, 0.12, 'sine');
+                    setTimeout(() => this._beep(330, 0.06, 0.08, 'sine'), 50);
+                    break;
+                case 'cascade':
+                    this._beep(523, 0.07, 0.2, 'sine');
+                    setTimeout(() => this._beep(659, 0.07, 0.2, 'sine'), 60);
+                    setTimeout(() => this._beep(784, 0.07, 0.2, 'sine'), 120);
+                    setTimeout(() => this._beep(1047, 0.07, 0.2, 'sine'), 180);
+                    setTimeout(() => this._beep(1319, 0.12, 0.18, 'sine'), 240);
+                    break;
+                case 'special':
+                    this._beep(1047, 0.08, 0.22, 'sine');
+                    setTimeout(() => this._beep(1319, 0.08, 0.22, 'sine'), 50);
+                    setTimeout(() => this._beep(1568, 0.08, 0.22, 'sine'), 100);
+                    setTimeout(() => this._beep(2093, 0.15, 0.25, 'sine'), 150);
+                    break;
+                case 'flip':
+                    this._beep(600, 0.06, 0.15, 'sine');
+                    setTimeout(() => this._beep(750, 0.06, 0.12, 'sine'), 40);
+                    break;
+                case 'flag':
+                    this._beep(700, 0.08, 0.15, 'triangle');
+                    break;
+                case 'merge':
+                    this._beep(440, 0.08, 0.2, 'sine');
+                    setTimeout(() => this._beep(554, 0.12, 0.22, 'sine'), 60);
+                    break;
+                case 'flap':
+                    this._beep(500, 0.06, 0.15, 'sine');
+                    this._beep(600, 0.04, 0.1, 'sine');
+                    break;
+                case 'place':
+                    this._beep(660, 0.08, 0.18, 'sine');
+                    break;
+                case 'shoot':
+                    this._beep(900, 0.05, 0.12, 'triangle');
+                    this._beep(700, 0.04, 0.08, 'triangle');
+                    break;
+            }
+        }
+
+        getMusicConfig(title: string) {
+            // Note frequencies
+            const n: Record<string, number> = {
+                C3:130.81, D3:146.83, E3:164.81, F3:174.61, G3:196.00, A3:220.00, B3:246.94,
+                C4:261.63, D4:293.66, E4:329.63, F4:349.23, G4:392.00, A4:440.00, B4:493.88,
+                C5:523.25, D5:587.33, E5:659.25, F5:698.46, G5:783.99, A5:880.00,
+            };
+            const configs: Record<string, any> = {
+                'Snake': {
+                    tempo: 115, wave: 'triangle' as OscillatorType,
+                    melody: [n.E4,n.G4,n.A4,n.E5,n.D5,n.A4,n.G4,n.E4, n.A4,n.G4,n.E4,n.D4,n.E4,n.G4,n.A4,n.C5],
+                    bass: [n.C3, n.G3, n.A3, n.G3]
+                },
+                'Fruit Ninja': {
+                    tempo: 148, wave: 'sine' as OscillatorType,
+                    melody: [n.C4,n.E4,n.G4,n.C5,n.E5,n.C5,n.G4,n.E4, n.F4,n.A4,n.C5,n.A4,n.F4,n.D4,n.G4,n.E4],
+                    bass: [n.C3, n.C3, n.A3, n.G3]
+                },
+                'Fish Eat Fish': {
+                    tempo: 88, wave: 'sine' as OscillatorType,
+                    melody: [n.A3,n.C4,n.E4,n.A4,0,n.G4,n.E4,n.D4, n.C4,n.E4,n.G4,n.E4,0,n.D4,n.C4,n.A3],
+                    bass: [n.A3, n.E3, n.F3, n.E3]
+                },
+                'PvZ Lite': {
+                    tempo: 128, wave: 'triangle' as OscillatorType,
+                    melody: [n.C4,n.E4,n.G4,n.B4,n.A4,n.F4,n.D4,n.C4, n.E4,n.G4,0,n.A4,n.G4,n.E4,n.D4,n.C4],
+                    bass: [n.C3, n.G3, n.A3, n.F3]
+                },
+                'Breakout': {
+                    tempo: 138, wave: 'square' as OscillatorType,
+                    melody: [n.E4,n.E4,n.G4,n.G4,n.A4,0,n.G4,n.F4, n.E4,n.D4,n.E4,n.G4,n.A4,n.G4,n.E4,n.D4],
+                    bass: [n.C3, n.G3, n.A3, n.G3]
+                },
+                '2048': {
+                    tempo: 76, wave: 'sine' as OscillatorType,
+                    melody: [n.C4,n.G4,n.E4,n.G4,n.A4,0,n.G4,n.E4, n.D4,n.E4,n.G4,n.C5,0,n.A4,n.G4,n.E4],
+                    bass: [n.C3, n.E3, n.F3, n.G3]
+                },
+                'Flappy Bird': {
+                    tempo: 136, wave: 'triangle' as OscillatorType,
+                    melody: [n.C4,n.D4,n.E4,n.G4,n.E4,n.C4,n.D4,n.G4, n.A4,n.G4,n.E4,n.D4,n.C4,n.E4,n.G4,n.C5],
+                    bass: [n.C3, n.G3, n.C3, n.G3]
+                },
+                'Minesweeper': {
+                    tempo: 66, wave: 'sine' as OscillatorType,
+                    melody: [n.A3,n.C4,0,n.E4,n.C4,0,n.A3,n.G3, n.A3,n.B3,0,n.C4,n.E4,0,n.D4,n.C4],
+                    bass: [n.A3, n.E3, n.A3, n.G3]
+                },
+                'Tic Tac Toe': {
+                    tempo: 118, wave: 'sine' as OscillatorType,
+                    melody: [n.C4,n.E4,n.G4,n.C5,n.G4,n.E4,n.D4,n.F4, n.A4,n.D5,n.A4,n.F4,n.E4,n.G4,n.C5,n.E5],
+                    bass: [n.C3, n.G3, n.D3, n.G3]
+                },
+                'Memory Match': {
+                    tempo: 86, wave: 'sine' as OscillatorType,
+                    melody: [n.C4,n.E4,n.G4,n.E4,0,n.F4,n.A4,n.G4, n.E4,n.D4,n.C4,0,n.G4,n.E4,n.D4,n.C4],
+                    bass: [n.C3, n.F3, n.G3, n.C3]
+                },
+                'Happy Crush': {
+                    tempo: 126, wave: 'sine' as OscillatorType,
+                    melody: [n.C4,n.D4,n.E4,n.G4,n.A4,n.G4,n.E4,n.D4, n.C4,n.E4,n.G4,n.C5,n.A4,n.G4,n.E4,n.C4],
+                    bass: [n.C3, n.G3, n.A3, n.G3]
+                },
+            };
+            return configs[title] || configs['Snake'];
+        }
+
+        startMusic(gameTitle: string) {
+            this.stopMusic();
+            if (!this.isMusicOn || !this.ctx) return;
+            const cfg = this.getMusicConfig(gameTitle);
+            const beatDur = 60 / cfg.tempo;
+            this.noteIdx = 0;
+
+            this.musicLoop = window.setInterval(() => {
+                if (!this.isMusicOn || !this.ctx) return;
+                const freq = cfg.melody[this.noteIdx % cfg.melody.length];
+                if (freq > 0) {
+                    this._beep(freq, beatDur * 0.75, 0.22, cfg.wave, this.musicGain!);
+                    // Add subtle harmony (fifth above, quieter)
+                    this._beep(freq * 1.5, beatDur * 0.5, 0.06, 'sine', this.musicGain!);
+                }
+                // Bass every 4 beats
+                if (this.noteIdx % 4 === 0 && cfg.bass) {
+                    const bassF = cfg.bass[Math.floor(this.noteIdx / 4) % cfg.bass.length];
+                    if (bassF > 0) this._beep(bassF, beatDur * 2.5, 0.15, 'sine', this.musicGain!);
+                }
+                this.noteIdx++;
+            }, beatDur * 1000);
+        }
+
+        stopMusic() {
+            if (this.musicLoop !== null) {
+                clearInterval(this.musicLoop);
+                this.musicLoop = null;
+            }
+        }
+
+        toggle(gameTitle: string) {
+            if (!this.ctx) this.init();
+            this.isMusicOn = !this.isMusicOn;
+            if (this.isMusicOn) {
+                if (this.ctx?.state === 'suspended') this.ctx.resume();
+                this.startMusic(gameTitle);
+            } else {
+                this.stopMusic();
+            }
+            return this.isMusicOn;
+        }
+    }
+
+    // Initialize audio system
+    const audio = new GameAudioManager();
+    window.gameAudio = audio;
+    window.playGameSound = (type: string) => audio.playSfx(type);
+
+    // Music toggle button
+    const musicBtn = document.getElementById('music-toggle');
+    const gameTitle = document.querySelector('h1')?.textContent?.trim() || 'Snake';
+
+    musicBtn?.addEventListener('click', () => {
+        const isOn = audio.toggle(gameTitle);
+        musicBtn.textContent = isOn ? '🔊' : '🔇';
+        musicBtn.classList.toggle('border-green-400', isOn);
+        musicBtn.classList.toggle('border-white/20', !isOn);
+    });
 </script>

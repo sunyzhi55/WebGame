@@ -188,6 +188,7 @@
 
     if (grid[r][c].isMine) {
       gameOver = true;
+      window.playGameSound?.('explosion');
       revealAllMines();
       draw();
       return;
@@ -214,6 +215,7 @@
     grid[r][c].flagged = !grid[r][c].flagged;
     flags += grid[r][c].flagged ? 1 : -1;
     mineCountDisplay.textContent = (mines - flags).toString();
+    window.playGameSound?.('flag');
     draw();
   }
 
@@ -240,6 +242,7 @@
       gameWon = true;
       gameOver = true;
       stopTimer();
+      window.playGameSound?.('win');
       // Flag all mines
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
@@ -391,6 +394,9 @@
     const r = Math.floor(y / cellSize);
 
     if (e.button === 0) { // Left click
+      if (r >= 0 && r < rows && c >= 0 && c < cols && !grid[r]?.[c]?.revealed && !grid[r]?.[c]?.flagged) {
+        window.playGameSound?.('click');
+      }
       reveal(r, c);
     } else if (e.button === 2) { // Right click
       toggleFlag(r, c);

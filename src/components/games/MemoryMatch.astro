@@ -24,6 +24,7 @@
     let isProcessing = false;
     let score = 0;
     let matches = 0;
+    let moveCount = 0;
 
     const EMOJIS = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼'];
 
@@ -63,6 +64,7 @@
         isProcessing = false;
         score = 0;
         matches = 0;
+        moveCount = 0;
         window.updateScore(0);
         draw();
     }
@@ -105,6 +107,13 @@
             }
         }
         ctx.globalAlpha = 1.0;
+
+        // Move counter
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.font = '14px "Press Start 2P"';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`MOVES: ${moveCount}`, canvas.width / 2, canvas.height - 10);
     }
 
     canvas.addEventListener('click', e => {
@@ -133,9 +142,11 @@
     function flipCard(index: number) {
         cards[index].isFlipped = true;
         flippedCards.push(index);
+        window.playGameSound?.('flip');
         draw();
 
         if (flippedCards.length === 2) {
+            moveCount++;
             isProcessing = true;
             const c1 = cards[flippedCards[0]];
             const c2 = cards[flippedCards[1]];
@@ -149,13 +160,32 @@
                 score += 10;
                 matches++;
                 window.updateScore(score);
+                window.playGameSound?.('match');
                 draw();
 
                 if (matches === EMOJIS.length) {
-                    setTimeout(() => window.showGameOver(score), 500);
+                    // Calculate bonus based on fewer moves
+                    const bonus = Math.max(0, (30 - moveCount) * 5);
+                    score += bonus;
+                    window.updateScore(score);
+                    setTimeout(() => {
+                        window.playGameSound?.('win');
+                        // Show custom win overlay instead of game over
+                        const screen = document.getElementById('game-over-screen');
+                        const finalScore = document.getElementById('final-score');
+                        const title = screen?.querySelector('h2');
+                        if (screen && finalScore && title) {
+                            title.textContent = '🎉 YOU WIN!';
+                            title.className = 'text-4xl font-arcade text-green-400 mb-8';
+                            finalScore.innerText = `${score} (${moveCount} moves)`;
+                            screen.classList.remove('hidden');
+                            screen.classList.add('flex');
+                        }
+                    }, 500);
                 }
             } else {
                 // No Match
+                window.playGameSound?.('error');
                 setTimeout(() => {
                     c1.isFlipped = false;
                     c2.isFlipped = false;

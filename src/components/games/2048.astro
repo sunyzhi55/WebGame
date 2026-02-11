@@ -43,7 +43,7 @@
   </div>
 
   <p class="mt-6 text-slate-500 font-medium">
-    Use Arrow Keys or WASD to move tiles
+    Use Arrow Keys, WASD, or Swipe to move tiles
   </p>
 </div>
 
@@ -185,6 +185,7 @@
       }
       gameOver = true;
       gameOverOverlay.classList.remove("hidden");
+      window.playGameSound?.('gameOver');
     }
 
     // Movement helpers (explicit per direction)
@@ -288,6 +289,7 @@
 
       if (moved) {
         scoreDisplay.textContent = score.toString();
+        window.playGameSound?.('merge');
         addNewTile();
         draw();
         checkGameOver();
@@ -299,6 +301,32 @@
         e.preventDefault();
       }
       handleInput(e.key);
+    });
+
+    // Touch/Swipe support
+    let touchStartX = 0;
+    let touchStartY = 0;
+    canvas.addEventListener('touchstart', (e) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      e.preventDefault();
+    }, {passive: false});
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+    }, {passive: false});
+
+    canvas.addEventListener('touchend', (e) => {
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      const minSwipe = 30;
+      if (Math.abs(dx) < minSwipe && Math.abs(dy) < minSwipe) return;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        handleInput(dx > 0 ? 'ArrowRight' : 'ArrowLeft');
+      } else {
+        handleInput(dy > 0 ? 'ArrowDown' : 'ArrowUp');
+      }
     });
 
     newGameBtn.addEventListener("click", initGame);

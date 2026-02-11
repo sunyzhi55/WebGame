@@ -13,21 +13,65 @@ tags:
 </div>
 
 
-# 1. 🎮🌟 Retro Arcade Hub
+# 🎮 Retro Arcade Hub
 
 一组用 **Astro + Tailwind** 打造的浏览器小游戏合集，轻量好玩、开箱即用。
+支持 **PC 与移动端**，内置 **音乐 & 音效系统**。
 
-## 2. 🍀 你能玩到什么？
+---
 
-- 2048 🔢 | 扫雷 💣 | 植物大战僵尸 Lite 🌻🧟
-- 贪吃蛇 🐍 | 打砖块 🧱 | 像素小鸟 🐤
-- 井字棋 ❌⭕ | 记忆翻牌 🧠 | 水果忍者 🍉 | 大鱼吃小鱼 🐟
+## 📝 更新日志
+
+### 2026-02-11
+- ✨ 新增 **开心消消乐** 游戏（特殊糖果、连击、关卡系统）
+- 🔊 全部游戏接入 **音乐 & 音效系统**
+- 🐛 修复 Breakout 代码格式错误 & PvZ 樱桃炸弹永久存在 bug
+- 📱 2048 / Breakout / Happy Crush 新增 **触屏支持**
+- 🤖 井字棋 AI 升级为 **Minimax 完美 AI**
+- 🎨 Snake / FlappyBird / FishEatFish / FruitNinja / MemoryMatch 视觉 & UX 改进
+- 🏠 首页响应式优化、游戏计数徽章
+
+---
+
+## 1. 🕹️ 游戏列表（11 款）
+
+| 游戏 | 图标 | 简介 | 亮点 |
+|------|------|------|------|
+| **2048** | 🔢 | 经典数字合并益智 | 键盘 + 触屏滑动 |
+| **贪吃蛇 Snake** | 🐍 | 吃食物、变更长 | 速度递增、网格线、渐变蛇身 |
+| **打砖块 Breakout** | 🧱 | 弹球消除砖块 | 3 条命、关卡递进、触屏支持 |
+| **像素小鸟 Flappy Bird** | 🐦 | 点击飞翔、穿越管道 | 地面滚动、鸟倾斜动画、管帽、云朵 |
+| **水果忍者 Fruit Ninja** | 🍉 | 滑动切水果、避开炸弹 | 刀痕特效、生命值 ❤️ 显示 |
+| **大鱼吃小鱼 Fish Eat Fish** | 🐟 | 鼠标控制大鱼吞食 | 体型进度条、危险鱼红色光晕提示 |
+| **扫雷 Minesweeper** | 💣 | 经典扫雷，三种难度 | 3D 凸起格子、计时器、精准音效 |
+| **井字棋 Tic Tac Toe** | ❌ | 人机对战 | Minimax 完美 AI、回合状态提示 |
+| **记忆翻牌 Memory Match** | 🃏 | 翻牌配对 | 步数计数、胜利界面 🎉、步数奖励分 |
+| **植物大战僵尸 PvZ Lite** | 🌻 | 种植植物、抵御僵尸 | 4 种植物、波次系统、割草机、樱桃炸弹爆炸动画 |
+| **开心消消乐 Happy Crush** | 🍬 | 三消益智 | 特殊糖果、连击系统、关卡递进、触屏拖拽 |
+
+---
+
+## 2. 🔊 音频系统
+
+所有游戏共享统一的音频引擎（`GameAudioManager`），基于 **Web Audio API** 实现：
+
+- **🎵 背景音乐**：每款游戏有独立的程序化旋律 + 低音伴奏
+- **🔈 音效**：16+ 种音效类型（点击、吃、匹配、爆炸、胜利、翻拍等）
+- **🔇 一键切换**：游戏页面左上角的音乐开关按钮
+
+---
 
 ## 3. 🛠 技术栈
 
-- Astro 4
-- Tailwind CSS
-- TypeScript（用于脚本/组件）
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| [Astro](https://astro.build/) | 4.x | 静态站点框架 |
+| [Tailwind CSS](https://tailwindcss.com/) | 3.4 | 原子化 CSS |
+| TypeScript | 5.3 | 类型安全脚本 |
+| Canvas 2D | — | 所有游戏的渲染引擎 |
+| Web Audio API | — | 程序化音乐 & 音效 |
+
+---
 
 ## 4. 📦 环境要求
 
@@ -49,20 +93,64 @@ npm run build    # 产出静态文件到 dist/
 npm run preview  # 本地预览构建产物
 ```
 
+---
+
 ## 7. ☁️ 部署到 GitHub Pages
 
 1. 在 `astro.config.mjs` 设置 `site`（用户页 `https://<USER>.github.io/`；项目页 `https://<USER>.github.io/<REPO>/` 并配置 `base: '/<REPO>/'`）。
 2. 使用已有工作流 `.github/workflows/deploy.yml`：安装依赖 → `npm run build` → 上传 `dist` → Actions 发布。
 3. 推送到默认分支（如 `main`），待 Actions 完成后在 Settings → Pages 查看发布地址。
 
-## 8. 📂 目录速览
+---
 
-- `src/components/games/`：各小游戏组件（Astro + Canvas/DOM 逻辑）
-- `src/layouts/`：通用布局
-- `astro.config.mjs`：Astro 配置
-- `tailwind.config.mjs`：Tailwind 配置
+## 8. 📂 项目结构
 
-## 9. 💡 小贴士
+```
+src/
+├── components/games/   # 11 款游戏组件（Astro + Canvas）
+│   ├── 2048.astro
+│   ├── Breakout.astro
+│   ├── FishEatFish.astro
+│   ├── FlappyBird.astro
+│   ├── FruitNinja.astro
+│   ├── HappyCrush.astro
+│   ├── MemoryMatch.astro
+│   ├── Minesweeper.astro
+│   ├── PvZ.astro
+│   ├── Snake.astro
+│   └── TicTacToe.astro
+├── layouts/
+│   ├── GameLayout.astro  # 游戏通用布局（音频系统、分数、游戏结束画面）
+│   └── Layout.astro      # 基础 HTML 布局
+├── pages/
+│   ├── index.astro       # 首页（游戏选择网格）
+│   └── games/            # 各游戏路由页
+└── styles/
+    └── global.css        # 全局样式 & Press Start 2P 字体
+```
 
-- 新增游戏时，可参考现有模式放在 `src/components/games/`，并更新导航。
-- 项目未附带许可证，如需分发请自行添加 LICENSE。
+---
+
+## 9. 💡 开发指南
+
+### 新增游戏
+
+1. 在 `src/components/games/` 中创建 `YourGame.astro` 组件
+2. 在 `src/pages/games/` 中创建对应的路由页面，引用 `GameLayout` 布局
+3. 在 `src/pages/index.astro` 的 `games` 数组中添加入口
+4. （可选）在 `GameLayout.astro` 的 `getMusicConfig()` 中添加专属背景音乐
+
+### 可用的全局 API
+
+```javascript
+window.updateScore(score)       // 更新顶部分数
+window.showGameOver(score)      // 显示游戏结束画面
+window.hideGameOver()           // 隐藏游戏结束画面
+window.playGameSound(type)      // 播放音效（'click' | 'eat' | 'match' | 'explosion' | 'win' | ...）
+```
+
+---
+
+## 10. 📄 许可
+
+项目未附带许可证，如需分发请自行添加 LICENSE。

@@ -1,0 +1,710 @@
+---
+---
+<div class="flex flex-col items-center justify-center h-full bg-gradient-to-b from-pink-600 via-purple-600 to-indigo-700 p-3 font-sans select-none overflow-hidden">
+  <!-- Game Info Bar -->
+  <div class="flex gap-3 mb-3 items-center flex-wrap justify-center">
+    <div class="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/30 text-center min-w-[70px]">
+      <div class="text-[10px] text-pink-200 font-bold uppercase">Level</div>
+      <div id="hc-level" class="text-xl font-bold text-white">1</div>
+    </div>
+    <div class="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/30 text-center min-w-[90px]">
+      <div class="text-[10px] text-pink-200 font-bold uppercase">Score</div>
+      <div id="hc-score" class="text-xl font-bold text-white">0</div>
+    </div>
+    <div class="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/30 text-center min-w-[70px]">
+      <div class="text-[10px] text-pink-200 font-bold uppercase">Moves</div>
+      <div id="hc-moves" class="text-xl font-bold text-white">30</div>
+    </div>
+    <div class="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/30 text-center min-w-[90px]">
+      <div class="text-[10px] text-pink-200 font-bold uppercase">Target</div>
+      <div id="hc-target" class="text-xl font-bold text-yellow-300">1000</div>
+    </div>
+  </div>
+
+  <!-- Combo Display -->
+  <div id="hc-combo" class="hidden text-2xl font-bold text-yellow-300 mb-1 drop-shadow-lg">
+    COMBO x<span id="hc-combo-num">2</span>!
+  </div>
+
+  <!-- Game Canvas -->
+  <div class="relative">
+    <canvas id="crushCanvas" width="480" height="480" class="bg-purple-900/50 rounded-xl shadow-2xl cursor-pointer border-4 border-white/20 max-w-full h-auto"></canvas>
+
+    <!-- Level Complete Overlay -->
+    <div id="hc-level-complete" class="hidden absolute inset-0 bg-black/80 flex flex-col items-center justify-center rounded-xl backdrop-blur-sm z-10">
+      <h2 class="text-3xl font-bold text-yellow-400 mb-2">🎉 LEVEL COMPLETE!</h2>
+      <p class="text-lg text-white mb-4">Score: <span id="hc-lc-score" class="text-yellow-300">0</span></p>
+      <button id="hc-next-btn" class="px-8 py-3 bg-pink-500 hover:bg-pink-400 text-white font-bold rounded-xl text-lg transition-all shadow-lg">
+        NEXT LEVEL →
+      </button>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div id="hc-gameover" class="hidden absolute inset-0 bg-black/80 flex flex-col items-center justify-center rounded-xl backdrop-blur-sm z-10">
+      <h2 class="text-3xl font-bold text-red-400 mb-2">GAME OVER</h2>
+      <p class="text-lg text-white mb-4">Final Score: <span id="hc-go-score" class="text-red-300">0</span></p>
+      <button id="hc-retry-btn" class="px-8 py-3 bg-pink-500 hover:bg-pink-400 text-white font-bold rounded-xl text-lg transition-all shadow-lg">
+        TRY AGAIN
+      </button>
+    </div>
+  </div>
+
+  <p class="mt-3 text-white/60 text-xs">Click/Tap two adjacent candies or swipe to swap • Match 3+ to score</p>
+</div>
+
+<script>
+  // @ts-nocheck
+  const canvas = document.getElementById('crushCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // UI Elements
+  const uiLevel = document.getElementById('hc-level');
+  const uiScore = document.getElementById('hc-score');
+  const uiMoves = document.getElementById('hc-moves');
+  const uiTarget = document.getElementById('hc-target');
+  const uiCombo = document.getElementById('hc-combo');
+  const uiComboNum = document.getElementById('hc-combo-num');
+  const uiLevelComplete = document.getElementById('hc-level-complete');
+  const uiLcScore = document.getElementById('hc-lc-score');
+  const uiGameOver = document.getElementById('hc-gameover');
+  const uiGoScore = document.getElementById('hc-go-score');
+
+  // Constants
+  const ROWS = 8, COLS = 8, NUM_TYPES = 6;
+  const CELL = 60; // 480 / 8
+
+  const CANDY = [
+    { p: '#FF4757', s: '#FF6B81', g: '#FFAAB5' },
+    { p: '#FFA502', s: '#FECA57', g: '#FFF200' },
+    { p: '#2ED573', s: '#7BED9F', g: '#B5F5CC' },
+    { p: '#1E90FF', s: '#70A1FF', g: '#A4C8FF' },
+    { p: '#A55EEA', s: '#CD84F1', g: '#E4B5FF' },
+    { p: '#FF6B81', s: '#FFB8C0', g: '#FFD6DC' },
+  ];
+
+  const SP_NONE = 0, SP_STRIPE_H = 1, SP_STRIPE_V = 2, SP_WRAPPED = 3, SP_RAINBOW = 4;
+
+  // Levels
+  const LEVELS = [
+    { moves: 30, target: 1000 }, { moves: 28, target: 2500 },
+    { moves: 25, target: 4000 }, { moves: 25, target: 6000 },
+    { moves: 22, target: 8500 }, { moves: 20, target: 11000 },
+    { moves: 20, target: 14000 }, { moves: 18, target: 18000 },
+  ];
+  function getLvlCfg(l) {
+    if (l <= LEVELS.length) return LEVELS[l - 1];
+    return { moves: Math.max(12, 30 - l * 2), target: 5000 + l * 3000 };
+  }
+
+  // State
+  let grid = [], sp = [], anim = [];
+  let selected = null;
+  let state = 'IDLE'; // IDLE, SWAP, SWAP_BACK, PROCESSING
+  let swapA = null, swapB = null, animProg = 0;
+  let score = 0, moves = 30, level = 1, target = 1000, combo = 0;
+  let particles = [], texts = [];
+  let gameOver = false, levelDone = false;
+
+  // Animation cell data
+  function mkAnim() { return { ox: 0, oy: 0, sc: 1, removing: false }; }
+
+  // Init Level
+  function initLevel(lvl) {
+    level = lvl;
+    const cfg = getLvlCfg(lvl);
+    moves = cfg.moves; target = cfg.target; score = 0; combo = 0;
+    selected = null; state = 'IDLE'; gameOver = false; levelDone = false;
+    particles = []; texts = [];
+    grid = []; sp = []; anim = [];
+    for (let r = 0; r < ROWS; r++) {
+      grid[r] = []; sp[r] = []; anim[r] = [];
+      for (let c = 0; c < COLS; c++) {
+        grid[r][c] = rndType(r, c); sp[r][c] = SP_NONE; anim[r][c] = mkAnim();
+      }
+    }
+    // Make sure there are valid moves
+    if (!hasValidMoves()) shuffleBoard();
+    updateUI();
+    uiLevelComplete.classList.add('hidden');
+    uiGameOver.classList.add('hidden');
+  }
+
+  function rndType(r, c) {
+    let t;
+    do { t = Math.floor(Math.random() * NUM_TYPES); } while (
+      (c >= 2 && grid[r]?.[c-1] === t && grid[r]?.[c-2] === t) ||
+      (r >= 2 && grid[r-1]?.[c] === t && grid[r-2]?.[c] === t)
+    );
+    return t;
+  }
+
+  function updateUI() {
+    uiLevel.textContent = level;
+    uiScore.textContent = score;
+    uiMoves.textContent = moves;
+    uiTarget.textContent = target;
+    if (combo >= 2) { uiCombo.classList.remove('hidden'); uiComboNum.textContent = combo; }
+    else { uiCombo.classList.add('hidden'); }
+    window.updateScore?.(score);
+  }
+
+  // === Match Detection ===
+  function findMatches() {
+    const matched = new Set();
+    const groups = [];
+    // Horizontal
+    for (let r = 0; r < ROWS; r++) {
+      let s = 0;
+      for (let c = 1; c <= COLS; c++) {
+        if (c < COLS && grid[r][c] === grid[r][s] && grid[r][c] >= 0) continue;
+        if (c - s >= 3 && grid[r][s] >= 0) {
+          const g = [];
+          for (let i = s; i < c; i++) { matched.add(r * COLS + i); g.push({ r, c: i }); }
+          groups.push({ cells: g, dir: 'h', type: grid[r][s], len: c - s });
+        }
+        s = c;
+      }
+    }
+    // Vertical
+    for (let c = 0; c < COLS; c++) {
+      let s = 0;
+      for (let r = 1; r <= ROWS; r++) {
+        if (r < ROWS && grid[r][c] === grid[s][c] && grid[r][c] >= 0) continue;
+        if (r - s >= 3 && grid[s][c] >= 0) {
+          const g = [];
+          for (let i = s; i < r; i++) { matched.add(i * COLS + c); g.push({ r: i, c }); }
+          groups.push({ cells: g, dir: 'v', type: grid[s][c], len: r - s });
+        }
+        s = r;
+      }
+    }
+    return { matched, groups };
+  }
+
+  // === Process Matches ===
+  function processMatches(mr) {
+    const { matched, groups } = mr;
+    if (matched.size === 0) return false;
+    combo++;
+    const mult = Math.min(combo, 10);
+    let pts = matched.size * 20 * mult;
+
+    // Determine specials to create
+    const specials = [];
+    // Check for L/T intersections first
+    const cellGroupCount = {};
+    for (const g of groups) {
+      for (const cell of g.cells) {
+        const key = cell.r * COLS + cell.c;
+        cellGroupCount[key] = (cellGroupCount[key] || 0) + 1;
+      }
+    }
+    const intersections = new Set();
+    for (const [key, count] of Object.entries(cellGroupCount)) {
+      if (count >= 2) intersections.add(parseInt(key));
+    }
+
+    for (const g of groups) {
+      if (g.len >= 5) {
+        const mid = g.cells[Math.floor(g.len / 2)];
+        specials.push({ r: mid.r, c: mid.c, sp: SP_RAINBOW, type: g.type });
+      } else if (g.len === 4) {
+        const mid = g.cells[1];
+        // Check if this cell is an intersection
+        const midKey = mid.r * COLS + mid.c;
+        if (!intersections.has(midKey)) {
+          specials.push({ r: mid.r, c: mid.c, sp: g.dir === 'h' ? SP_STRIPE_V : SP_STRIPE_H, type: g.type });
+        }
+      }
+    }
+    // Intersections → wrapped
+    for (const key of intersections) {
+      const r = Math.floor(key / COLS), c = key % COLS;
+      specials.push({ r, c, sp: SP_WRAPPED, type: grid[r][c] });
+    }
+
+    // Activate existing specials in matched cells
+    for (const key of matched) {
+      const r = Math.floor(key / COLS), c = key % COLS;
+      if (sp[r][c] !== SP_NONE) activateSpecial(r, c, sp[r][c], grid[r][c], matched);
+    }
+
+    // Particles & effects
+    for (const key of matched) {
+      const r = Math.floor(key / COLS), c = key % COLS;
+      if (grid[r][c] >= 0) {
+        const col = CANDY[grid[r][c] % CANDY.length].p;
+        for (let i = 0; i < 5; i++) particles.push(new Particle(c * CELL + CELL / 2, r * CELL + CELL / 2, col));
+      }
+      anim[r][c].removing = true;
+      anim[r][c].sc = 0.01;
+    }
+
+    // Create specials (keep these cells)
+    const kept = new Set();
+    for (const s of specials) {
+      const key = s.r * COLS + s.c;
+      if (matched.has(key)) {
+        kept.add(key);
+        sp[s.r][s.c] = s.sp;
+        grid[s.r][s.c] = s.type;
+        anim[s.r][s.c].removing = false;
+        anim[s.r][s.c].sc = 1.3; // Pop effect
+        // Special creation sparkle
+        for (let i = 0; i < 8; i++) particles.push(new Particle(s.c * CELL + CELL / 2, s.r * CELL + CELL / 2, '#fff'));
+      }
+    }
+
+    // Remove matched (except kept)
+    for (const key of matched) {
+      if (kept.has(key)) continue;
+      const r = Math.floor(key / COLS), c = key % COLS;
+      grid[r][c] = -1;
+      sp[r][c] = SP_NONE;
+    }
+
+    // Score text
+    const cells = Array.from(matched).map(k => ({ r: Math.floor(k / COLS), c: k % COLS }));
+    const avgC = cells.reduce((s, c) => s + c.c, 0) / cells.length;
+    const avgR = cells.reduce((s, c) => s + c.r, 0) / cells.length;
+    texts.push(new FloatText(avgC * CELL + CELL / 2, avgR * CELL + CELL / 2, `+${pts}`));
+    if (combo >= 2) texts.push(new FloatText(240, 20, `COMBO x${combo}!`, '#FF6B81'));
+
+    score += pts;
+    updateUI();
+    window.playGameSound?.('match');
+    if (combo > 1) window.playGameSound?.('cascade');
+    return true;
+  }
+
+  function activateSpecial(r, c, spType, cType, matched) {
+    switch (spType) {
+      case SP_STRIPE_H:
+        for (let cc = 0; cc < COLS; cc++) { matched.add(r * COLS + cc); }
+        window.playGameSound?.('special');
+        for (let cc = 0; cc < COLS; cc++) particles.push(new Particle(cc * CELL + CELL / 2, r * CELL + CELL / 2, '#fff'));
+        break;
+      case SP_STRIPE_V:
+        for (let rr = 0; rr < ROWS; rr++) { matched.add(rr * COLS + c); }
+        window.playGameSound?.('special');
+        for (let rr = 0; rr < ROWS; rr++) particles.push(new Particle(c * CELL + CELL / 2, rr * CELL + CELL / 2, '#fff'));
+        break;
+      case SP_WRAPPED:
+        for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) matched.add(nr * COLS + nc);
+        }
+        window.playGameSound?.('explosion');
+        for (let i = 0; i < 15; i++) particles.push(new Particle(c * CELL + CELL / 2, r * CELL + CELL / 2, CANDY[cType % CANDY.length].g));
+        break;
+      case SP_RAINBOW: {
+        // Remove all candies of most common remaining type
+        const counts = Array(NUM_TYPES).fill(0);
+        for (let rr = 0; rr < ROWS; rr++) for (let cc = 0; cc < COLS; cc++) if (grid[rr][cc] >= 0) counts[grid[rr][cc]]++;
+        let maxT = 0; for (let i = 1; i < NUM_TYPES; i++) if (counts[i] > counts[maxT]) maxT = i;
+        for (let rr = 0; rr < ROWS; rr++) for (let cc = 0; cc < COLS; cc++) {
+          if (grid[rr][cc] === maxT) {
+            matched.add(rr * COLS + cc);
+            particles.push(new Particle(cc * CELL + CELL / 2, rr * CELL + CELL / 2, '#FFD700'));
+          }
+        }
+        window.playGameSound?.('special');
+        break;
+      }
+    }
+  }
+
+  // === Gravity & Refill ===
+  function applyGravity() {
+    let moved = false;
+    for (let c = 0; c < COLS; c++) {
+      let wr = ROWS - 1;
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (grid[r][c] >= 0) {
+          if (wr !== r) {
+            grid[wr][c] = grid[r][c]; sp[wr][c] = sp[r][c];
+            grid[r][c] = -1; sp[r][c] = SP_NONE;
+            anim[wr][c] = { ox: 0, oy: (r - wr) * CELL, sc: 1, removing: false };
+            anim[r][c] = mkAnim();
+            moved = true;
+          }
+          wr--;
+        }
+      }
+      for (let r = wr; r >= 0; r--) {
+        grid[r][c] = Math.floor(Math.random() * NUM_TYPES);
+        sp[r][c] = SP_NONE;
+        anim[r][c] = { ox: 0, oy: -(wr - r + 2) * CELL, sc: 1, removing: false };
+        moved = true;
+      }
+    }
+    return moved;
+  }
+
+  // === Valid Moves Check ===
+  function swapG(r1, c1, r2, c2) {
+    [grid[r1][c1], grid[r2][c2]] = [grid[r2][c2], grid[r1][c1]];
+    [sp[r1][c1], sp[r2][c2]] = [sp[r2][c2], sp[r1][c1]];
+  }
+
+  function hasValidMoves() {
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      if (c < COLS - 1) { swapG(r, c, r, c + 1); const m = findMatches().matched.size > 0; swapG(r, c, r, c + 1); if (m) return true; }
+      if (r < ROWS - 1) { swapG(r, c, r + 1, c); const m = findMatches().matched.size > 0; swapG(r, c, r + 1, c); if (m) return true; }
+    }
+    return false;
+  }
+
+  function shuffleBoard() {
+    do {
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        const r2 = Math.floor(Math.random() * ROWS), c2 = Math.floor(Math.random() * COLS);
+        [grid[r][c], grid[r2][c2]] = [grid[r2][c2], grid[r][c]];
+      }
+      // Clear any automatic matches
+      let fm = findMatches();
+      while (fm.matched.size > 0) {
+        for (const k of fm.matched) { const rr = Math.floor(k / COLS), cc = k % COLS; grid[rr][cc] = Math.floor(Math.random() * NUM_TYPES); sp[rr][cc] = SP_NONE; }
+        fm = findMatches();
+      }
+    } while (!hasValidMoves());
+    texts.push(new FloatText(240, 240, 'SHUFFLE!', '#FFD700'));
+  }
+
+  // === Effects Classes ===
+  class Particle {
+    constructor(x, y, color) {
+      this.x = x; this.y = y; this.color = color;
+      this.vx = (Math.random() - 0.5) * 8; this.vy = (Math.random() - 0.5) * 8 - 2;
+      this.size = Math.random() * 5 + 2; this.life = 1; this.decay = 0.025 + Math.random() * 0.02;
+    }
+    update() { this.x += this.vx; this.y += this.vy; this.vy += 0.15; this.life -= this.decay; }
+    draw() {
+      ctx.globalAlpha = Math.max(0, this.life);
+      ctx.fillStyle = this.color;
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  class FloatText {
+    constructor(x, y, text, color = '#FFD700') {
+      this.x = x; this.y = y; this.text = text; this.color = color;
+      this.life = 1; this.vy = -1.5;
+    }
+    update() { this.y += this.vy; this.life -= 0.018; }
+    draw() {
+      ctx.globalAlpha = Math.max(0, this.life);
+      ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 3; ctx.strokeText(this.text, this.x, this.y);
+      ctx.fillStyle = this.color; ctx.fillText(this.text, this.x, this.y);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // === Drawing ===
+  function drawCandy(x, y, type, spType, scale, alpha) {
+    if (type < 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x + CELL / 2, y + CELL / 2);
+    ctx.scale(scale, scale);
+    const cd = CANDY[type % CANDY.length];
+    const rad = CELL * 0.38;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath(); ctx.ellipse(2, 3, rad, rad * 0.9, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Body gradient
+    const gr = ctx.createRadialGradient(-rad * 0.3, -rad * 0.3, rad * 0.1, 0, 0, rad);
+    gr.addColorStop(0, cd.g); gr.addColorStop(0.5, cd.p); gr.addColorStop(1, cd.s);
+    ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI * 2); ctx.fill();
+
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath(); ctx.ellipse(-rad * 0.2, -rad * 0.3, rad * 0.3, rad * 0.18, -0.5, 0, Math.PI * 2); ctx.fill();
+
+    // Special indicators
+    if (spType === SP_STRIPE_H) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2;
+      for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(-rad * 0.7, i * 4); ctx.lineTo(rad * 0.7, i * 4); ctx.stroke(); }
+    } else if (spType === SP_STRIPE_V) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2;
+      for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * 4, -rad * 0.7); ctx.lineTo(i * 4, rad * 0.7); ctx.stroke(); }
+    } else if (spType === SP_WRAPPED) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, rad * 0.85, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, rad * 0.62, 0, Math.PI * 2); ctx.stroke();
+    } else if (spType === SP_RAINBOW) {
+      const rb = ['#FF0000', '#FF9900', '#FFFF00', '#00FF00', '#0066FF', '#9900FF'];
+      for (let i = 0; i < rb.length; i++) {
+        ctx.fillStyle = rb[i]; ctx.globalAlpha = alpha * 0.25;
+        ctx.beginPath(); ctx.arc(0, 0, rad * (1 - i * 0.13), 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = alpha;
+      ctx.font = `${rad * 1.1}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('⭐', 0, 1);
+    }
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Grid background
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)';
+      ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+    }
+
+    // Selection highlight
+    if (selected && state === 'IDLE') {
+      ctx.fillStyle = 'rgba(255,255,0,0.25)';
+      ctx.fillRect(selected.c * CELL, selected.r * CELL, CELL, CELL);
+      ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 3;
+      ctx.strokeRect(selected.c * CELL + 1.5, selected.r * CELL + 1.5, CELL - 3, CELL - 3);
+    }
+
+    // Candies
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] < 0) continue;
+      const a = anim[r][c];
+      if (a.sc < 0.02) continue;
+      drawCandy(c * CELL + a.ox, r * CELL + a.oy, grid[r][c], sp[r][c], a.sc, 1);
+    }
+
+    // Particles
+    particles.forEach(p => p.draw());
+    // Floating texts
+    texts.forEach(t => t.draw());
+  }
+
+  // === Animation & Game Loop ===
+  function updateAnims() {
+    let settling = true;
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      const a = anim[r][c];
+      if (a.removing) {
+        a.sc *= 0.75;
+        if (a.sc < 0.02) a.sc = 0;
+        else settling = false;
+      } else {
+        // Lerp offsets to 0
+        if (Math.abs(a.ox) > 0.5) { a.ox *= 0.72; settling = false; } else a.ox = 0;
+        if (Math.abs(a.oy) > 0.5) { a.oy *= 0.72; settling = false; } else a.oy = 0;
+        // Bounce scale back to 1
+        if (Math.abs(a.sc - 1) > 0.01) { a.sc += (1 - a.sc) * 0.18; settling = false; } else a.sc = 1;
+      }
+    }
+    return settling;
+  }
+
+  function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+  function gameLoop() {
+    // Update particles & texts
+    particles = particles.filter(p => p.life > 0); particles.forEach(p => p.update());
+    texts = texts.filter(t => t.life > 0); texts.forEach(t => t.update());
+
+    // State machine
+    if (state === 'SWAP') {
+      animProg += 0.08;
+      const t = easeInOut(Math.min(animProg, 1));
+      const dx = (swapB.c - swapA.c) * CELL, dy = (swapB.r - swapA.r) * CELL;
+      anim[swapA.r][swapA.c].ox = dx * t;
+      anim[swapA.r][swapA.c].oy = dy * t;
+      anim[swapB.r][swapB.c].ox = -dx * t;
+      anim[swapB.r][swapB.c].oy = -dy * t;
+
+      if (animProg >= 1) {
+        swapG(swapA.r, swapA.c, swapB.r, swapB.c);
+        resetAnim(swapA.r, swapA.c); resetAnim(swapB.r, swapB.c);
+        const mr = findMatches();
+        if (mr.matched.size > 0) {
+          state = 'PROCESSING'; combo = 0;
+          processAndCascade();
+        } else {
+          swapG(swapA.r, swapA.c, swapB.r, swapB.c);
+          const dx2 = (swapB.c - swapA.c) * CELL, dy2 = (swapB.r - swapA.r) * CELL;
+          anim[swapA.r][swapA.c].ox = dx2; anim[swapA.r][swapA.c].oy = dy2;
+          anim[swapB.r][swapB.c].ox = -dx2; anim[swapB.r][swapB.c].oy = -dy2;
+          state = 'SWAP_BACK';
+          window.playGameSound?.('error');
+        }
+      }
+    }
+
+    if (state === 'SWAP_BACK') {
+      updateAnims();
+      let done = true;
+      for (const p of [anim[swapA.r]?.[swapA.c], anim[swapB.r]?.[swapB.c]]) {
+        if (p && (Math.abs(p.ox) > 0.5 || Math.abs(p.oy) > 0.5)) done = false;
+      }
+      if (done) { state = 'IDLE'; selected = null; }
+    }
+
+    if (state === 'PROCESSING' || state === 'IDLE') {
+      updateAnims();
+    }
+
+    draw();
+    requestAnimationFrame(gameLoop);
+  }
+
+  function resetAnim(r, c) { anim[r][c] = mkAnim(); }
+
+  function delay(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+  async function processAndCascade() {
+    combo = 0;
+    while (true) {
+      const mr = findMatches();
+      if (mr.matched.size === 0) break;
+      processMatches(mr);
+      await delay(220);
+      // Reset removing flags
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        anim[r][c].removing = false;
+        if (grid[r][c] < 0) anim[r][c].sc = 1;
+      }
+      applyGravity();
+      window.playGameSound?.('drop');
+      await delay(320);
+    }
+    moves--;
+    combo = 0;
+    updateUI();
+
+    if (score >= target) {
+      levelDone = true;
+      uiLcScore.textContent = score;
+      uiLevelComplete.classList.remove('hidden');
+      window.playGameSound?.('win');
+    } else if (moves <= 0) {
+      gameOver = true;
+      uiGoScore.textContent = score;
+      uiGameOver.classList.remove('hidden');
+      window.playGameSound?.('gameOver');
+      window.showGameOver?.(score);
+    } else if (!hasValidMoves()) {
+      shuffleBoard();
+    }
+    state = 'IDLE'; selected = null;
+  }
+
+  // === Input ===
+  let touchStartCell = null;
+
+  function getCellFromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+    let clientX, clientY;
+    if (e.touches) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else if (e.changedTouches) {
+      clientX = e.changedTouches[0].clientX;
+      clientY = e.changedTouches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    const mx = (clientX - rect.left) * sx, my = (clientY - rect.top) * sy;
+    const c = Math.floor(mx / CELL), r = Math.floor(my / CELL);
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return null;
+    return { r, c };
+  }
+
+  canvas.addEventListener('click', (e) => {
+    if (state !== 'IDLE' || gameOver || levelDone) return;
+    const cell = getCellFromEvent(e);
+    if (!cell) return;
+    const { r, c } = cell;
+
+    if (!selected) {
+      selected = { r, c };
+      window.playGameSound?.('click');
+    } else {
+      const dr = Math.abs(r - selected.r), dc = Math.abs(c - selected.c);
+      if ((dr === 1 && dc === 0) || (dr === 0 && dc === 1)) {
+        swapA = { r: selected.r, c: selected.c }; swapB = { r, c };
+        state = 'SWAP'; animProg = 0;
+        window.playGameSound?.('click');
+      } else if (r === selected.r && c === selected.c) {
+        selected = null;
+      } else {
+        selected = { r, c };
+        window.playGameSound?.('click');
+      }
+    }
+  });
+
+  // Touch drag to swap
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (state !== 'IDLE' || gameOver || levelDone) return;
+    touchStartCell = getCellFromEvent(e);
+  }, {passive: false});
+
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+  }, {passive: false});
+
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    if (state !== 'IDLE' || gameOver || levelDone || !touchStartCell) return;
+    const endCell = getCellFromEvent(e);
+    if (!endCell) { touchStartCell = null; return; }
+
+    const dr = endCell.r - touchStartCell.r;
+    const dc = endCell.c - touchStartCell.c;
+
+    // Determine swipe direction
+    let targetR = touchStartCell.r, targetC = touchStartCell.c;
+    if (Math.abs(dr) > Math.abs(dc)) {
+      targetR += dr > 0 ? 1 : -1;
+    } else if (Math.abs(dc) > 0) {
+      targetC += dc > 0 ? 1 : -1;
+    } else {
+      // Tap (no drag) - use click logic
+      if (!selected) {
+        selected = { r: touchStartCell.r, c: touchStartCell.c };
+        window.playGameSound?.('click');
+      } else if (selected.r === touchStartCell.r && selected.c === touchStartCell.c) {
+        selected = null;
+      } else {
+        const sdr = Math.abs(touchStartCell.r - selected.r), sdc = Math.abs(touchStartCell.c - selected.c);
+        if ((sdr === 1 && sdc === 0) || (sdr === 0 && sdc === 1)) {
+          swapA = { r: selected.r, c: selected.c }; swapB = { r: touchStartCell.r, c: touchStartCell.c };
+          state = 'SWAP'; animProg = 0;
+          window.playGameSound?.('click');
+        } else {
+          selected = { r: touchStartCell.r, c: touchStartCell.c };
+          window.playGameSound?.('click');
+        }
+      }
+      touchStartCell = null;
+      return;
+    }
+
+    if (targetR >= 0 && targetR < ROWS && targetC >= 0 && targetC < COLS) {
+      swapA = { r: touchStartCell.r, c: touchStartCell.c };
+      swapB = { r: targetR, c: targetC };
+      state = 'SWAP'; animProg = 0;
+      selected = null;
+      window.playGameSound?.('click');
+    }
+    touchStartCell = null;
+  }, {passive: false});
+
+  // Buttons
+  document.getElementById('hc-next-btn').addEventListener('click', () => { initLevel(level + 1); });
+  document.getElementById('hc-retry-btn').addEventListener('click', () => { initLevel(1); window.hideGameOver?.(); });
+  window.addEventListener('game-restart', () => { initLevel(1); });
+
+  // Start
+  initLevel(1);
+  requestAnimationFrame(gameLoop);
+</script>

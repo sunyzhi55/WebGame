@@ -12,6 +12,7 @@ const games = [
     { id: 'minesweeper', title: 'Minesweeper', icon: '💣', color: 'bg-gray-500' },
     { id: 'tic-tac-toe', title: 'Tic Tac Toe', icon: '❌', color: 'bg-indigo-500' },
     { id: 'memory-match', title: 'Memory Match', icon: '🃏', color: 'bg-pink-500' },
+    { id: 'happy-crush', title: 'Happy Crush', icon: '🍬', color: 'bg-gradient-to-r from-pink-500 to-purple-500' },
 ];
 
 const base = import.meta.env.BASE_URL;
@@ -21,22 +22,30 @@ const basePath = base.replace(/\/$/, '');
 <Layout title="Retro Arcade Hub">
 	<main class="container mx-auto px-4 py-8">
 		<header class="text-center mb-12">
-			<h1 class="text-4xl md:text-6xl font-arcade text-transparent bg-clip-text bg-gradient-to-r from-arcade-pink to-yellow-400 mb-4">
+			<h1 class="text-4xl md:text-6xl font-arcade text-transparent bg-clip-text bg-gradient-to-r from-arcade-pink to-yellow-400 mb-4 animate-pulse">
 				RETRO ARCADE HUB
 			</h1>
-			<p class="text-gray-400 font-arcade text-sm">SELECT A GAME TO START</p>
+			<p class="text-gray-400 font-arcade text-sm mb-2">SELECT A GAME TO START</p>
+			<span class="inline-block bg-arcade-purple/50 border border-arcade-pink/30 text-arcade-pink font-arcade text-xs px-3 py-1 rounded-full">
+				🎮 {games.length} GAMES AVAILABLE
+			</span>
 		</header>
 
-		<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+		<div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
 			{games.map((game) => (
 				<a href={`${basePath}/games/${game.id}`} class="group relative block">
 					<div class={`absolute inset-0 ${game.color} rounded-lg transform translate-x-1 translate-y-1 transition-transform group-hover:translate-x-2 group-hover:translate-y-2`}></div>
-					<div class="relative bg-arcade-purple border-2 border-white/10 rounded-lg p-6 h-40 flex flex-col items-center justify-center hover:-translate-y-1 transition-transform duration-200">
-						<div class="text-4xl mb-3 group-hover:scale-110 transition-transform duration-200">{game.icon}</div>
-						<h2 class="font-arcade text-sm text-center text-white group-hover:text-yellow-300">{game.title}</h2>
+					<div class="relative bg-arcade-purple border-2 border-white/10 rounded-lg p-4 md:p-6 h-32 md:h-40 flex flex-col items-center justify-center hover:-translate-y-1 transition-transform duration-200">
+						<div class="text-3xl md:text-4xl mb-2 md:mb-3 group-hover:scale-125 transition-transform duration-200">{game.icon}</div>
+						<h2 class="font-arcade text-[10px] md:text-sm text-center text-white group-hover:text-yellow-300 transition-colors">{game.title}</h2>
 					</div>
 				</a>
 			))}
 		</div>
+
+		<footer class="text-center mt-12 text-gray-600 font-arcade text-xs">
+			<p>Retro Arcade Hub © 2025-2026</p>
+			<p class="mt-1 text-gray-700">Built with ❤️ using Astro</p>
+		</footer>
 	</main>
 </Layout>
